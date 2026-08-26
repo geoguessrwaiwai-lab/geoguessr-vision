@@ -29,6 +29,67 @@ export function classifyResolutionHeight(resolutionHeight) {
   return RESOLUTION_CLASS.UNKNOWN;
 }
 
+// Country -> "captured on/after this year-month means it's known third-party Shitcam
+// coverage" cutoffs. This is a manually-curated list of known country/date combinations,
+// not a general detector — countries absent from this table are never flagged, even if
+// they do have third-party low-quality coverage. That's an accepted false-negative, not a
+// bug: the alternative (image-based classification) is the fallback for everything this
+// list misses. Cutoffs are inclusive-from (>=).
+const SHITCAM_CUTOFFS = new Map([
+  ["BD", { year: 2021, month: 4 }],
+  ["EC", { year: 2022, month: 3 }],
+  ["FI", { year: 2020, month: 9 }],
+  ["IN", { year: 2021, month: 10 }],
+  ["KH", { year: 2022, month: 10 }],
+  ["LB", { year: 2021, month: 1 }],
+  ["LK", { year: 2021, month: 2 }],
+  ["NG", { year: 2021, month: 6 }],
+  ["NP", { year: 2020, month: 1 }],
+  ["VN", { year: 2020, month: 1 }],
+  // Europe-wide default cutoff, shared by all these countries.
+  ["AT", { year: 2021, month: 1 }],
+  ["BG", { year: 2021, month: 1 }],
+  ["CZ", { year: 2021, month: 1 }],
+  ["DK", { year: 2021, month: 1 }],
+  ["EE", { year: 2021, month: 1 }],
+  ["ES", { year: 2021, month: 1 }],
+  ["FR", { year: 2021, month: 1 }],
+  ["GB", { year: 2021, month: 1 }],
+  ["GR", { year: 2021, month: 1 }],
+  ["HR", { year: 2021, month: 1 }],
+  ["IT", { year: 2021, month: 1 }],
+  ["LT", { year: 2021, month: 1 }],
+  ["LV", { year: 2021, month: 1 }],
+  ["PL", { year: 2021, month: 1 }],
+  ["PT", { year: 2021, month: 1 }],
+  ["RO", { year: 2021, month: 1 }],
+  ["SE", { year: 2021, month: 1 }],
+  // Cyprus and São Tomé and Príncipe: ALL coverage is known Shitcam, no date cutoff.
+  ["CY", { year: -Infinity, month: 1 }],
+  ["ST", { year: -Infinity, month: 1 }],
+]);
+// US is special-cased on latitude (only Alaska, north of 52°N) on top of a date cutoff.
+const US_SHITCAM_CUTOFF = { year: 2019, month: 1 };
+
+// Given a resolutionHeight===6656 panorama's capture date ("YYYY-M" as returned by `date`
+// above), country code, and latitude, checks whether it falls in a country/date range known
+// to be third-party low-quality (Shitcam) coverage rather than genuine Gen2/Gen3.
+// Countries not in SHITCAM_CUTOFFS always return false (see SHITCAM_CUTOFFS comment) — this
+// is a targeted, incomplete heuristic, not a general Shitcam detector.
+export function isKnownShitcam({ date, countryCode, lat }) {
+  if (!date || !countryCode) return false;
+  const [year, month] = date.split("-").map(Number);
+  if (!Number.isFinite(year) || year <= 2000) return false;
+  const yearMonth = year * 12 + month;
+  if (countryCode === "US") {
+    if (!(Number.isFinite(lat) && lat > 52)) return false;
+    return yearMonth >= US_SHITCAM_CUTOFF.year * 12 + US_SHITCAM_CUTOFF.month;
+  }
+  const cutoff = SHITCAM_CUTOFFS.get(countryCode);
+  if (!cutoff) return false;
+  return yearMonth >= cutoff.year * 12 + cutoff.month;
+}
+
 function buildMetaRequestUrl(panoId) {
   const toggles = [1, 2, 3, 4, 5, 6, 8, 12].map((n) => new Enum(n));
   const message = {
@@ -75,6 +136,8 @@ function parsePanoMessage(msg) {
     pitchDeg: 90 - orientation[1],
     rollDeg: orientation[2],
     date: msg[6]?.[7]?.slice(0, 2)?.join("-") ?? null, // [year, month] if present
+    // ISO 3166-1 alpha-2 country code (e.g. "IN", "US"), used by isKnownShitcam() below.
+    countryCode: msg[5]?.[0]?.[1]?.[4] ?? null,
     // The copyright line shown in the Street View corner, e.g. "© 2024 Google" for
     // official Google-driven coverage, or "© <company/agency name>" for third-party
     // (trekker, government, etc.) imagery — this is independent of the capture date.
@@ -85,9 +148,9 @@ function parsePanoMessage(msg) {
   };
 }
 
-// Returns { id, resolutionHeight, headingDeg, pitchDeg, rollDeg, lat, lon, date, isScout }
-// for a Street View panoId,
-// using the direction the camera vehicle actually faced (not the map-maker's chosen view angle).
+// Returns { id, resolutionHeight, headingDeg, pitchDeg, rollDeg, lat, lon, date, countryCode,
+// isScout } for a Street View panoId, using the direction the camera vehicle actually faced
+// (not the map-maker's chosen view angle).
 export async function getPanoMeta(panoId) {
   const data = await fetchGoogleJson(buildMetaRequestUrl(panoId));
   return parsePanoMessage(data[1][0]);

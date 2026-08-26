@@ -24,7 +24,8 @@ npm install
 | `apply-tags.mjs`         | タグ付け結果を`extra.tags`にマージして保存                                                |
 | `tag-copyright.mjs`      | 著作権(撮影主体)を自動判定してタグ付け(画像判定不要、下記参照)                            |
 | `tag-watermark-year.mjs` | 透かしの年号をOCRで自動タグ付け(Gen4のみ、読み取れない場合は`©unclear`、下記参照)         |
-| `label-tool/`            | 世代・車体色・著作権年をラベリングするローカルWebツール                                  |
+| `tag-shitcam.mjs`        | 既知の国・撮影日の組み合わせからShitcamを自動タグ付け(画像判定不要、下記参照)             |
+| `label-tool/`            | 世代・車体色・著作権年をラベリングするローカルWebツール                                   |
 | `models/`(gitignore対象) | 学習済みモデルの出力先                                                                    |
 
 ## レンダリング方式: front/back(透視図)がメイン、360°帯は保険
@@ -37,13 +38,13 @@ npm install
 
 `ResolutionHeight`による世代区分は次の共通定義を使用します(`pano-meta.mjs`の`classifyResolutionHeight`)。定義外の値は`Unknown`とし、推測では分類しません。
 
-| ResolutionHeight | 区分                                                       |
-| ---------------- | ---------------------------------------------------------- |
-| `1664`以下       | `Gen1`                                                     |
+| ResolutionHeight | 区分                                                          |
+| ---------------- | ------------------------------------------------------------- |
+| `1664`以下       | `Gen1`                                                        |
 | `8192`           | `Gen4` / `Smallcam`(同じ解像度で、両者の区別は画像を見て行う) |
-| `6656`           | `Gen2 / Gen3 / Shitcam`(これらは解像度だけでは区別できない) |
+| `6656`           | `Gen2 / Gen3 / Shitcam`(これらは解像度だけでは区別できない)   |
 
-`6656`の3パターン(Gen2 / Gen3 / Shitcam)をさらに区別する方法は今後実装予定で、現状は未実装です(保留)。
+`6656`の3パターン(Gen2 / Gen3 / Shitcam)を画像なしで区別する部分的な手段として`tag-shitcam.mjs`があります(下記参照)。ただしこれは既知の国・撮影日の組み合わせだけを機械的に拾う手法で、Shitcamを網羅的に検出するものではありません(未収録の国・期間のShitcamは見逃します、意図的に許容している false negative)。それ以外(Gen2とGen3の区別、未収録のShitcamの検出)は今後実装予定で、現状は未実装です(保留)。
 
 ## タグ付けの方針
 
@@ -51,13 +52,13 @@ npm install
 
 `Smallcam`は`Gen4`と対等な独立した世代として扱います(`Gen4`の特徴・派生ではありません)。解像度は`Gen4`と同じ8192pxですが、車体・アンテナ等の見た目が異なる別カテゴリとして画像から判定します。
 
-| #   | 条件                                 | タグ                   | 例                                                |
-| --- | ------------------------------------ | ---------------------- | ------------------------------------------------- |
+| #   | 条件                                 | タグ                   | 例                                                             |
+| --- | ------------------------------------ | ---------------------- | -------------------------------------------------------------- |
 | 1   | 常に                                 | カメラ世代(単体)       | `Gen1`, `Gen4`, `Smallcam`, `Shitcam`, `Gen2 / Gen3 / Shitcam` |
-| 2   | Gen4またはSmallcamの地点だけ         | 透かしの著作権年(単体) | `©2023`, `©unclear`                               |
-| 3   | Gen4の地点だけ(Smallcamを除く)       | 車体色(単体)           | `Blue`, `Black`                                   |
-| 4   | Gen4で著作権年が判明した地点だけ     | 車体色+著作権年        | `Blue 2023`                                       |
-| 5   | Smallcamで著作権年が判明した地点だけ | `Smallcam`+著作権年    | `Smallcam 2026`                                   |
+| 2   | Gen4またはSmallcamの地点だけ         | 透かしの著作権年(単体) | `©2023`, `©unclear`                                            |
+| 3   | Gen4の地点だけ(Smallcamを除く)       | 車体色(単体)           | `Blue`, `Black`                                                |
+| 4   | Gen4で著作権年が判明した地点だけ     | 車体色+著作権年        | `Blue 2023`                                                    |
+| 5   | Smallcamで著作権年が判明した地点だけ | `Smallcam`+著作権年    | `Smallcam 2026`                                                |
 
 補足:
 
@@ -72,10 +73,11 @@ npm install
 `tag-watermark-year.mjs`は地点の世代タグ(`Gen4`/`Smallcam`)がすでに付いているかどうかで著作権年タグを書き込むか判断するため、**世代タグを先に確定させてから**実行する必要があります。
 
 ```bash
-node capture-locations.mjs input.json ./renders --only-untagged
+node tag-shitcam.mjs input.json step0.json
+node capture-locations.mjs step0.json ./renders --only-untagged
 # → renders/*-front.jpg, *-back.jpg, *-ground.jpg(保険), *-watermark.jpg をClaude Codeなどに読ませ、
 #   上記「タグ付けの方針」に沿って世代・車体色のtags.jsonを作らせる
-node apply-tags.mjs input.json tags.json step1.json
+node apply-tags.mjs step0.json tags.json step1.json
 
 node tag-copyright.mjs step1.json step2.json --only-untagged
 node tag-watermark-year.mjs step2.json output.json --only-untagged
