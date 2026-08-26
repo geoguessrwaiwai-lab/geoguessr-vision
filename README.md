@@ -2,11 +2,6 @@
 
 [Vali](https://github.com/geoguessrwaiwai-lab/Vali)などで生成済みの地点JSON(`extra.tags`を持つ形式)に対して、Street Viewの見え方から**カメラ世代(Gen1〜Gen4 / Small cam)**と**ボンネットの色**を判定し、タグ付けしたJSONを保存するためのコンピュータビジョン・機械学習ツールです。
 
-`geoguessr-uploader`とは役割が分離されています:
-
-- [`geoguessr-uploader`](https://github.com/geoguessrwaiwai-lab/geoguessr-uploader) — 完成したJSONをGeoGuessrにアップロードするだけ
-- `geoguessr-vision`(このツール) — 事前に生成されたJSONに対してタグ付けを行い、タグ付き済みJSONを保存するだけ
-
 GoogleのAPIキーは一切不要です(Street View自体の内部エンドポイントを直接叩いています)。
 
 ## セットアップ
@@ -19,18 +14,18 @@ npm install
 
 ## 構成
 
-| ファイル/フォルダ | 用途 |
-| --- | --- |
-| `pb-url.mjs` | Google内部エンドポイント用の擬似protobuf URLエンコーダ(内部モジュール) |
-| `pano-meta.mjs` | パノラマのメタデータ(緯度経度からのパノラマ検索・真の進行方向/roll等)取得(内部モジュール) |
-| `render-pano.mjs` | パノラマタイルの合成・レンダリング(内部モジュール、詳細は下記) |
-| `concurrency.mjs` | 地点を並列処理するための小さなワーカープール(内部モジュール) |
-| `capture-locations.mjs` | 地点JSON一括処理。各地点のground/sky帯+透かしクロップをレンダリング + manifest出力 |
-| `apply-tags.mjs` | タグ付け結果を`extra.tags`にマージして保存 |
-| `tag-copyright.mjs` | 著作権(撮影主体)を自動判定してタグ付け(画像判定不要、下記参照) |
-| `gather-candidates.mjs` | 学習データ収集用に、既存の`*-locations.json`や海外の代表地点からpanoIdの候補プールを作成 |
-| `label-tool/` | Gen1-4・Small cam・ボンネット色をラベリングするためのローカルWebツール |
-| `models/`(gitignore対象) | 学習済みモデルの出力先 |
+| ファイル/フォルダ        | 用途                                                                                      |
+| ------------------------ | ----------------------------------------------------------------------------------------- |
+| `pb-url.mjs`             | Google内部エンドポイント用の擬似protobuf URLエンコーダ(内部モジュール)                    |
+| `pano-meta.mjs`          | パノラマのメタデータ(緯度経度からのパノラマ検索・真の進行方向/roll等)取得(内部モジュール) |
+| `render-pano.mjs`        | パノラマタイルの合成・レンダリング(内部モジュール、詳細は下記)                            |
+| `concurrency.mjs`        | 地点を並列処理するための小さなワーカープール(内部モジュール)                              |
+| `capture-locations.mjs`  | 地点JSON一括処理。各地点のground/sky帯+透かしクロップをレンダリング + manifest出力        |
+| `apply-tags.mjs`         | タグ付け結果を`extra.tags`にマージして保存                                                |
+| `tag-copyright.mjs`      | 著作権(撮影主体)を自動判定してタグ付け(画像判定不要、下記参照)                            |
+| `gather-candidates.mjs`  | 学習データ収集用に、既存の`*-locations.json`や海外の代表地点からpanoIdの候補プールを作成  |
+| `label-tool/`            | Gen1-4・Small cam・ボンネット色をラベリングするためのローカルWebツール                    |
+| `models/`(gitignore対象) | 学習済みモデルの出力先                                                                    |
 
 ## レンダリング方式: front/back(透視図)がメイン、360°帯は保険
 
@@ -71,12 +66,12 @@ node apply-tags.mjs input.json tags.json output.json
 
 紛らわしいので整理しておきます。
 
-| 値 | 取得元 | 意味 | 自動/目視 |
-| --- | --- | --- | --- |
-| `panoDate`(`extra.panoDate`) | GeoGuessrのエクスポート | **撮影日** | 既にJSONにある |
-| 著作権の**団体名**(例: `Google`) | `pano-meta.mjs`の`copyright`フィールド | 撮影主体(公式Google車 or 第三者/行政機関) | `tag-copyright.mjs`で完全自動 |
-| 著作権の**年号**(例: `2026`) | 同じ`copyright`フィールドの年部分 | ⚠️**常にリクエストした「今日の年」を返すだけで、パノラマ固有の情報ではない**。使わないこと | — |
-| 透かしの年号(例: `© 2025 Google`) | 画像タイルに焼き込まれた透かし文字(`renderWatermarkCrop`で切り出し) | そのパノラマが最後に(再)処理された年。**撮影年度とは別物**で、後年に再処理されると変わる | 目視(下記) |
+| 値                                | 取得元                                                              | 意味                                                                                       | 自動/目視                     |
+| --------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------- |
+| `panoDate`(`extra.panoDate`)      | GeoGuessrのエクスポート                                             | **撮影日**                                                                                 | 既にJSONにある                |
+| 著作権の**団体名**(例: `Google`)  | `pano-meta.mjs`の`copyright`フィールド                              | 撮影主体(公式Google車 or 第三者/行政機関)                                                  | `tag-copyright.mjs`で完全自動 |
+| 著作権の**年号**(例: `2026`)      | 同じ`copyright`フィールドの年部分                                   | ⚠️**常にリクエストした「今日の年」を返すだけで、パノラマ固有の情報ではない**。使わないこと | —                             |
+| 透かしの年号(例: `© 2025 Google`) | 画像タイルに焼き込まれた透かし文字(`renderWatermarkCrop`で切り出し) | そのパノラマが最後に(再)処理された年。**撮影年度とは別物**で、後年に再処理されると変わる   | 目視(下記)                    |
 
 `tag-copyright.mjs`は団体名だけを`extra.tags`に追加し、意味のない年号部分は最初から捨てているので、その点は元々問題ありません。一方で「本当のその地点の透かし年号」が欲しい場合は、`capture-locations.mjs`が出力する`*-watermark.jpg`をレビュー時に一緒に読んでタグ化してください(下記の理由でOCRでの完全自動化は断念しました)。
 
