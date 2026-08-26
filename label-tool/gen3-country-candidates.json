@@ -24,30 +24,6 @@
     "sourceFile": "Gen3 UA: Lviv"
   },
   {
-    "panoId": "GoOyKZt57vLAq2ayX7cx5Q",
-    "lat": 46.48225400080432,
-    "lon": 30.72295242444505,
-    "headingDeg": 138.2636260986328,
-    "rollDeg": 359.4800109863281,
-    "date": "2011-11",
-    "copyright": "© 2026 Google",
-    "isScout": false,
-    "countryCode": "UA",
-    "sourceFile": "Gen3 UA: Odesa"
-  },
-  {
-    "panoId": "6lSi2TDlfKnOXFnd83avvg",
-    "lat": 49.9934638916708,
-    "lon": 36.23049324017654,
-    "headingDeg": 189.9208526611328,
-    "rollDeg": 2.54277229309082,
-    "date": "2015-6",
-    "copyright": "© 2026 Google",
-    "isScout": false,
-    "countryCode": "UA",
-    "sourceFile": "Gen3 UA: Kharkiv"
-  },
-  {
     "panoId": "JSxHMberibRdVEwYY8elNw",
     "lat": 48.46473965277851,
     "lon": 35.04618292643154,
@@ -58,18 +34,6 @@
     "isScout": false,
     "countryCode": "UA",
     "sourceFile": "Gen3 UA: Dnipro"
-  },
-  {
-    "panoId": "RsVO4d1Qyl44n7k6YKbd4A",
-    "lat": 48.62085856655016,
-    "lon": 22.28791004059527,
-    "headingDeg": 72.66327667236328,
-    "rollDeg": 0.6691815853118896,
-    "date": "2015-6",
-    "copyright": "© 2026 Google",
-    "isScout": false,
-    "countryCode": "UA",
-    "sourceFile": "Gen3 UA: Uzhhorod"
   },
   {
     "panoId": "owz7qpzDMXQCtWEO-67WsA",
@@ -348,30 +312,6 @@
     "sourceFile": "Gen3 BO: La Paz"
   },
   {
-    "panoId": "wS7ULx7ytk7WWuT1ivU9fQ",
-    "lat": -17.38958149116239,
-    "lon": -66.15719240948553,
-    "headingDeg": 349.5887756347656,
-    "rollDeg": 0.2774870693683624,
-    "date": "2015-7",
-    "copyright": "© 2026 Google",
-    "isScout": false,
-    "countryCode": "BO",
-    "sourceFile": "Gen3 BO: Cochabamba"
-  },
-  {
-    "panoId": "kYKdXnLTI1n9b21hzNE1hg",
-    "lat": -19.01907056124313,
-    "lon": -65.26185592899519,
-    "headingDeg": 89.93437957763672,
-    "rollDeg": 1.031347751617432,
-    "date": "2015-7",
-    "copyright": "© 2026 Google",
-    "isScout": false,
-    "countryCode": "BO",
-    "sourceFile": "Gen3 BO: Sucre"
-  },
-  {
     "panoId": "EuIfx1VLJGka4IyWcSe4sg",
     "lat": -17.96478912493597,
     "lon": -67.10607784608862,
@@ -382,18 +322,6 @@
     "isScout": false,
     "countryCode": "BO",
     "sourceFile": "Gen3 BO: Oruro"
-  },
-  {
-    "panoId": "sjnpH6BRwLZZq9K9K7B5CA",
-    "lat": -34.901083721991,
-    "lon": -56.1643787539736,
-    "headingDeg": 173.8139343261719,
-    "rollDeg": 359.9043884277344,
-    "date": "2015-10",
-    "copyright": "© 2026 Google",
-    "isScout": false,
-    "countryCode": "UY",
-    "sourceFile": "Gen3 UY: Montevideo"
   },
   {
     "panoId": "K4O8szk_1YaC8XIHIpugsA",
@@ -418,18 +346,6 @@
     "isScout": false,
     "countryCode": "UY",
     "sourceFile": "Gen3 UY: Salto"
-  },
-  {
-    "panoId": "m9LdWUtlS2pgSrsCqwH3jw",
-    "lat": -32.32158250792191,
-    "lon": -58.07567616435383,
-    "headingDeg": 276.4526977539062,
-    "rollDeg": 358.7184143066406,
-    "date": "2015-6",
-    "copyright": "© 2026 Google",
-    "isScout": false,
-    "countryCode": "UY",
-    "sourceFile": "Gen3 UY: Paysandu"
   },
   {
     "panoId": "Lf-NxEkqlRLHRCgoHRNgNg",

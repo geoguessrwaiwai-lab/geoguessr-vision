@@ -1,7 +1,6 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
-import url from "node:url";
 
 // Usage: node server.mjs <dataDir> [port]
 // dataDir must contain items.json (from capture-for-labeling.mjs) and images/.
@@ -26,6 +25,52 @@ function saveLabels(labels) {
   fs.writeFileSync(labelsPath, JSON.stringify(labels, null, 2));
 }
 
+const GENERATIONS = new Set(["Gen1", "Gen2", "Gen3", "Gen4", "Shitcam"]);
+const CAR_VIEWS = new Set(["front", "back", "both", "neither"]);
+const GEN3_FEATURES = new Set(["stubby antenna", "long antenna", "short antenna"]);
+const GEN4_FEATURES = new Set(["smallcam"]);
+
+function validateLabel(entry) {
+  if (typeof entry.panoId !== "string" || entry.panoId.length === 0) return "panoId is required";
+  if (!GENERATIONS.has(entry.gen)) return "invalid generation";
+  const detailed = entry.gen === "Gen3" || entry.gen === "Gen4";
+  if (!detailed) return null;
+
+  const features = entry.features ?? [];
+  if (!Array.isArray(features) || new Set(features).size !== features.length) return "features must be a unique array";
+  const allowedFeatures = entry.gen === "Gen3" ? GEN3_FEATURES : GEN4_FEATURES;
+  if (features.some((feature) => !allowedFeatures.has(feature))) return `invalid feature for ${entry.gen}`;
+
+  const smallcam = features.includes("smallcam");
+  if (!CAR_VIEWS.has(entry.carView)) return "invalid car view";
+  if (smallcam && entry.carView !== "both") return "smallcam must use carView=both";
+  if (!smallcam && entry.carView !== "neither" && !entry.color) return "color is required when the car is visible";
+  if ((smallcam || entry.carView === "neither") && entry.color != null) return "color must be null for smallcam or neither";
+
+  const currentYear = new Date().getFullYear();
+  if (!Number.isInteger(entry.copyrightYear) || entry.copyrightYear < 2009 || entry.copyrightYear > currentYear) {
+    return `copyrightYear must be an integer from 2009 to ${currentYear}`;
+  }
+  return null;
+}
+
+function normalizeLabel(entry) {
+  const normalized = {
+    panoId: entry.panoId,
+    gen: entry.gen,
+    confidence: entry.confidence ?? "high",
+    notes: entry.notes ?? "",
+  };
+  if (entry.gen === "Gen3" || entry.gen === "Gen4") {
+    normalized.features = entry.features ?? [];
+    normalized.carView = entry.carView;
+    normalized.color = entry.color ?? null;
+    normalized.colorCustom = entry.color == null ? "" : (entry.colorCustom ?? "");
+    normalized.copyrightYear = entry.copyrightYear;
+  }
+  return normalized;
+}
+
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".json": "application/json", ".jpg": "image/jpeg", ".css": "text/css" };
 
 function serveFile(res, filePath) {
@@ -36,7 +81,7 @@ function serveFile(res, filePath) {
 }
 
 const server = http.createServer(async (req, res) => {
-  const parsed = url.parse(req.url, true);
+  const parsed = new URL(req.url, "http://localhost");
 
   if (parsed.pathname === "/api/items" && req.method === "GET") {
     const items = JSON.parse(fs.readFileSync(path.join(dataDir, "items.json"), "utf8"));
@@ -64,7 +109,13 @@ const server = http.createServer(async (req, res) => {
         delete labels[entry.panoId];
         labels[entry.panoId] = { rejected: true, reason: entry.reason ?? "", at: new Date().toISOString() };
       } else {
-        labels[entry.panoId] = { ...entry, at: new Date().toISOString() };
+        const error = validateLabel(entry);
+        if (error) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error }));
+          return;
+        }
+        labels[entry.panoId] = { ...normalizeLabel(entry), at: new Date().toISOString() };
       }
       saveLabels(labels);
       res.writeHead(200, { "Content-Type": "application/json" });

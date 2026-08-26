@@ -1270,16 +1270,6 @@
     "copyright": "© 2026 Google"
   },
   {
-    "panoId": "u4zkX0ECR1kPybjfB6J_cA",
-    "lat": 19.39867201185802,
-    "lon": -103.5602424360813,
-    "headingDeg": 250.8903503417969,
-    "date": "2014-7",
-    "sourceFile": "mx-col-locations.json",
-    "rollDeg": 351.5351257324219,
-    "copyright": "© 2026 Google"
-  },
-  {
     "panoId": "eI5KGR3kceV1vcxe8tE09g",
     "lat": 24.51464395984112,
     "lon": -103.3384255634751,
@@ -1437,16 +1427,6 @@
     "date": "2021-5",
     "sourceFile": "mx-hid-locations.json",
     "rollDeg": 358.7819213867188,
-    "copyright": "© 2026 Google"
-  },
-  {
-    "panoId": "lF226EdKQb94_tqhSXOHfQ",
-    "lat": 19.94761107234195,
-    "lon": -105.3345229757501,
-    "headingDeg": 322.4439392089844,
-    "date": "2014-10",
-    "sourceFile": "mx-jal-locations.json",
-    "rollDeg": 355.4495239257812,
     "copyright": "© 2026 Google"
   },
   {
@@ -1810,16 +1790,6 @@
     "copyright": "© 2026 Google"
   },
   {
-    "panoId": "v672iGkKeIHH7SqalRnuiQ",
-    "lat": 18.5567979699935,
-    "lon": -88.73691728950607,
-    "headingDeg": 37.30685806274414,
-    "date": "2012-5",
-    "sourceFile": "mx-roo-locations.json",
-    "rollDeg": 358.4608154296875,
-    "copyright": "© 2026 Google"
-  },
-  {
     "panoId": "Tw35Mup1LIQdF4qCT-Jwqw",
     "lat": 18.96503492620229,
     "lon": -87.61496004877398,
@@ -1877,16 +1847,6 @@
     "date": "2014-8",
     "sourceFile": "mx-sin-locations.json",
     "rollDeg": 3.25486159324646,
-    "copyright": "© 2026 Google"
-  },
-  {
-    "panoId": "npJ9Fk_OcMMQQg20w4szZw",
-    "lat": 22.55194368193908,
-    "lon": -101.6866958428743,
-    "headingDeg": 271.6718139648438,
-    "date": "2013-12",
-    "sourceFile": "mx-slp-locations.json",
-    "rollDeg": 2.595078229904175,
     "copyright": "© 2026 Google"
   },
   {
@@ -2210,16 +2170,6 @@
     "copyright": "© 2026 Google"
   },
   {
-    "panoId": "oYlHXlEbH56nG6FocEF4iQ",
-    "lat": 35.65952126614105,
-    "lon": 139.7005851409444,
-    "headingDeg": 180.7605438232422,
-    "date": "2018-5",
-    "sourceFile": "seed: Tokyo Shibuya (candidate Gen4)",
-    "rollDeg": 359.4576416015625,
-    "copyright": "© 2026 Google"
-  },
-  {
     "panoId": "XPxZb6yAfGFf0mQvZ6EFyg",
     "lat": 37.49787970717666,
     "lon": 127.0276084581182,
@@ -2270,16 +2220,6 @@
     "copyright": "© 2026 Google"
   },
   {
-    "panoId": "8oL4qaCIEW-w4NE0sjF0sA",
-    "lat": 55.75582782166472,
-    "lon": 37.61729148803609,
-    "headingDeg": 46.11941909790039,
-    "date": "2014-9",
-    "sourceFile": "seed: Moscow (candidate mixed gen)",
-    "rollDeg": 359.7039489746094,
-    "copyright": "© 2026 Google"
-  },
-  {
     "panoId": "DMXLNPrtb3wIznlt0Ny-CA",
     "lat": -33.86901089808646,
     "lon": 151.2092172112357,
@@ -2287,16 +2227,6 @@
     "date": "2026-7",
     "sourceFile": "seed: Sydney (candidate mixed gen)",
     "rollDeg": 0.4466163516044617,
-    "copyright": "© 2026 Google"
-  },
-  {
-    "panoId": "rhC6raxUSVO-FfGtsMcaVg",
-    "lat": 64.84568213182558,
-    "lon": -147.7226467523435,
-    "headingDeg": 264.8057250976562,
-    "date": "2019-9",
-    "sourceFile": "seed: Fairbanks AK (candidate older coverage)",
-    "rollDeg": 0.6276266574859619,
     "copyright": "© 2026 Google"
   },
   {

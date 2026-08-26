@@ -1,6 +1,6 @@
 # GeoGuessr Vision
 
-[Vali](https://github.com/geoguessrwaiwai-lab/Vali)などで生成済みの地点JSON(`extra.tags`を持つ形式)に対して、Street Viewの見え方から**カメラ世代(Gen1〜Gen4 / Small cam)**と**ボンネットの色**を判定し、タグ付けしたJSONを保存するためのコンピュータビジョン・機械学習ツールです。
+[Vali](https://github.com/geoguessrwaiwai-lab/Vali)などで生成済みの地点JSON(`extra.tags`を持つ形式)に対して、Street Viewの見え方から**カメラ世代・特徴・車体色**を判定し、タグ付けしたJSONを保存するためのコンピュータビジョン・機械学習ツールです。
 
 GoogleのAPIキーは一切不要です(Street View自体の内部エンドポイントを直接叩いています)。
 
@@ -24,7 +24,7 @@ npm install
 | `apply-tags.mjs`         | タグ付け結果を`extra.tags`にマージして保存                                                |
 | `tag-copyright.mjs`      | 著作権(撮影主体)を自動判定してタグ付け(画像判定不要、下記参照)                            |
 | `gather-candidates.mjs`  | 学習データ収集用に、既存の`*-locations.json`や海外の代表地点からpanoIdの候補プールを作成  |
-| `label-tool/`            | Gen1-4・Small cam・ボンネット色をラベリングするためのローカルWebツール                    |
+| `label-tool/`            | 世代・Smallcam/アンテナ特徴・車体色・著作権年をラベリングするローカルWebツール             |
 | `models/`(gitignore対象) | 学習済みモデルの出力先                                                                    |
 
 ## レンダリング方式: front/back(透視図)がメイン、360°帯は保険
@@ -32,15 +32,23 @@ npm install
 **経緯(行きつ戻りつしたので記録):**
 
 1. 最初は、パノラマの「真のカメラ進行方向(true heading)」を推定し、そこに向けてpitch/rollを合わせた1枚のクロップ画像を作る方式でした。
-2. しかしGen3/Gen4/Small camは車体の前後どちらが写るかが世代で異なり、道路のカント等で「狙った角度」がズレて車がフレーム外になることも多かったため、**特定の方角を推測するのをやめ、正距円筒(equirectangular)画像から仰角(pitch)範囲を360°全周ぶん帯状に切り出す**方式(`renderBand()`)に変更しました。
+2. しかしGen3/Gen4（smallcamを含む）は車体の前後どちらが写るかが世代・特徴で異なり、道路のカント等で「狙った角度」がズレて車がフレーム外になることも多かったため、**特定の方角を推測するのをやめ、正距円筒(equirectangular)画像から仰角(pitch)範囲を360°全周ぶん帯状に切り出す**方式(`renderBand()`)に変更しました。
 3. ところがこの帯方式には別の問題がありました: (a) equirect投影の歪みで車が曲がった筋状パターンになり視覚的に解釈しづらい、(b) 古い/低品質なパノラマは**真下(nadir)付近のデータをGoogleが元々持っておらず**(バグではなく、単に未撮影)、車が写るはずの位置が黒塗りになることがある。
 4. heading/roll補正が正しくできるようになった今、front/back(`renderCarViews`と同等の透視図)の方が実際のGoogle Mapビューアーで見るのと同じ自然な形で車が写るため、**front/backをメインに戻し、360°帯(`ground`)は前後どちらにも車が写らない場合の保険**として残す構成にしました。
 
-- `front`/`back`(基準は真の進行方向とその180°反対、pitch -20°): 車のボンネットが自然な形で写る、メインで確認する画像。真下に欠損があるGen3相当の画像では、タイル境界を避けるためfrontを-20°、backを-60°ずらす
+- `front`/`back`(基準は真の進行方向とその180°反対、pitch -20°): 車のボンネットが自然な形で写る、メインで確認する画像。Googleメタデータの`ResolutionHeight`が8192ではない画像では、タイル境界を避けるためfrontを-20°、backを-60°ずらす。Gen3/Gen4側の切り替えに画像下部の黒領域は使用しない
 - `ground`帯(pitch -5°〜-90°、フォールバック): front/backどちらにも車が見当たらない場合の保険。車が写る可能性のある領域をヘディング問わず丸ごと含む
 - `sky`帯(pitch 0°〜60°): 太陽・ハレーション・空の色など、Gen1/Gen2判定や全体の鮮明さ確認に使う領域を丸ごと含む(`capture-locations.mjs`では現在未使用、ラベリングツールでは過去に使用)
 
 内部的には`renderLocationBundle()`が1回のタイル取得からfront/back/ground/watermarkを全部切り出します。
+
+`ResolutionHeight`による世代区分は次の共通定義を使用します。定義外の値は`Unknown`とし、推測では分類しません。
+
+| ResolutionHeight | 区分 |
+| --- | --- |
+| `1664`以下 | `Gen1` |
+| `8192` | `Gen4` |
+| `6656` | `Gen2 / Gen3 / badcam`（解像度だけでは区別しない） |
 
 ## パフォーマンス: 大量地点を処理する場合
 
@@ -98,19 +106,34 @@ node capture-for-labeling.mjs gen3-country-candidates.json ./data --append --pre
 候補検索時にGoogleメタデータの`scout`フラグを確認し、Gen3トレッカーは画像取得前に自動除外します。
 既知の世代は`labels.json`へGen3として設定されます。車体色は画像レビュー時に追記できます。
 
-ラベリングツールは各地点について **Front/Back(真の進行方向とその180°反対、メイン)** と **Ground(360°帯、フォールバック)** を表示します。front/backに車が写っていない稀なケースでは、Groundを参考にしてください。
+ラベリングツールは各地点について **Front/Back(真の進行方向とその180°反対、メイン)**、**Ground(360°帯、フォールバック)**、著作権年を読むための**Watermark**を表示します。
 
-キーボード操作: `1-5`=世代(Gen1-4, Small cam)、`F/B/O/N`=車が写っている(と分かる場合の)前後、`Enter`=保存して次へ、`S`=スキップ、`←→`=移動(保存なし)。色の選択肢には`No Car`(車が写っていない場合)もあります。Small camを選ぶと色の選択欄は自動的に非表示になり、Car shows which endは自動で`Both`になります。
+ラベル構造:
+
+- 世代は`Gen1` / `Gen2` / `Gen3` / `Gen4` / `Shitcam`。Gen1・Gen2・Shitcamは世代だけで完了
+- Gen4の任意特徴は`smallcam`。選択時は車体・ブラーの見え方が自動的に`both`となり、色は記録しない
+- Gen3の任意特徴は`stubby antenna` / `long antenna` / `short antenna`
+- Gen3/Gen4のみ車体・ブラーの見え方を`front` / `back` / `both` / `neither`から選択
+- `neither`または`smallcam`の場合は色を記録しない。それ以外は従来どおり車体色を選択
+- Gen3/Gen4のみ、透かしの著作権年を2009年から現在年までの整数で選択
+
+キーボード操作: `1-5`=世代、`F/B/O/N`=車体・ブラーの見え方、`Enter`=保存して次へ、`S`=スキップ、`X`=棄却、`←→`=移動。
+
+旧形式のラベルを移行し、棄却済み地点をデータセットから取り除く場合:
+
+```bash
+node label-tool/migrate-label-format.mjs label-tool/data label-tool/candidates.json label-tool/gen3-country-candidates.json
+```
 
 進捗は`label-tool/data/labels.json`に自動保存され、閉じても再開可能です。
 
-## 学習方針(Gen1-4 / Small cam 分類)
+## 学習方針
 
-front単体・back単体では判断がつきにくいケース(Small camは前後で見え方が違う、Gen3は主にback、Gen4は主にfrontが写る、等)があるため、**FrontとBackを1組の入力として扱う2分岐モデル**で学習する方針です。
+front単体・back単体では判断がつきにくいため、**FrontとBackを1組の入力として扱う2分岐モデル**で学習する方針です。Smallcamは独立世代ではなくGen4の特徴として扱います。
 
 ```
 front.jpg ──▶ [CNN backbone] ──▶ 特徴ベクトルA ─┐
-               (重み共有)                        ├─▶ 結合 ──▶ MLP ──▶ Gen1/2/3/4/SmallCam
+               (重み共有)                        ├─▶ 結合 ──▶ MLP ──▶ 世代・特徴・色
 back.jpg  ──▶ [CNN backbone] ──▶ 特徴ベクトルB ─┘
 ```
 

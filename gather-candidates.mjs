@@ -190,6 +190,8 @@ for (const p of pool) {
     }
     candidates.push({
       panoId: meta.id,
+      resolutionHeight: meta.resolutionHeight,
+      resolutionClass: meta.resolutionClass,
       lat: meta.lat,
       lon: meta.lon,
       headingDeg: meta.headingDeg,

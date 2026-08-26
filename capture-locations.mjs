@@ -69,7 +69,11 @@ const results = await mapConcurrent(coords, concurrency, async ({ c, index }) =>
     return null;
   }
   try {
-    const { front, back, ground, watermark } = await renderLocationBundle(panoId, { zoom: 3 });
+    const knownResolutionHeight = c.resolutionHeight ?? c.extra?.resolutionHeight;
+    const { front, back, ground, watermark, resolutionHeight, resolutionClass } = await renderLocationBundle(panoId, {
+      zoom: 3,
+      resolutionHeight: knownResolutionHeight,
+    });
     const frontFile = path.join(outDir, `${index}-${panoId}-front.jpg`);
     const backFile = path.join(outDir, `${index}-${panoId}-back.jpg`);
     const groundFile = path.join(outDir, `${index}-${panoId}-ground.jpg`);
@@ -89,6 +93,8 @@ const results = await mapConcurrent(coords, concurrency, async ({ c, index }) =>
       groundFile,
       watermarkFile,
       panoDate: c.extra?.panoDate ?? null,
+      resolutionHeight,
+      resolutionClass,
       existingTags: c.extra?.tags ?? [],
     };
   } catch (e) {

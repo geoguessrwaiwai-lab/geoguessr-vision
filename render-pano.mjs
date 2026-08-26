@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { classifyResolutionHeight, getPanoMeta, RESOLUTION_CLASS } from "./pano-meta.mjs";
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
 
@@ -147,7 +148,7 @@ export async function renderPanoView(panoId, heading, pitch, { fov = 90, outW = 
 //
 // Default pitch/fov (-20°/80°, not the steeper -30°/100° tried earlier) is a deliberate
 // compromise: older/lower-quality panoramas can have genuinely blank imagery at the deepest
-// nadir (not a bug — Google just never captured it, see hasNadirGap below), and a steeper
+// nadir (not a bug — Google just never captured it), and a steeper
 // crop reaches far enough down to hit that gap, showing up as a black dome at the bottom of
 // the frame (the pole singularity in the perspective projection turns a flat missing-data
 // edge into a curved one). -20°/80° stays just above where that gap starts for panoramas
@@ -156,25 +157,44 @@ export async function renderPanoView(panoId, heading, pitch, { fov = 90, outW = 
 // yaw=0/180 sit exactly on a tile boundary, and on older/lower-quality panoramas that
 // boundary can be a visibly bad seam (adjacent tiles from different lenses not lining up —
 // see the abandoned seam-detector NOTE near cropView). Trying to score the seam itself
-// pixel-by-pixel proved unreliable, but panoramas from that same older capture era reliably
-// have a detectable side effect: a solid-black gap at the deepest nadir (hasNadirGap). Used
-// here as a proxy: when present, both views are nudged off their exact tile boundaries. For
+// pixel-by-pixel proved unreliable. ResolutionHeight from Google's metadata is used instead:
+// Vali identifies 8192px panoramas as Gen4-tier and 6656px panoramas as Gen3/Gen2/badcam.
+// Lower-resolution views are nudged off their exact tile boundaries. For
 // `front`, -20° was selected after comparing -60/-45/-20/+20/+45/+70°: it keeps the road
 // naturally framed without the larger rotation used by -45°. For `back`, -60° (yaw=120,
 // not 180) was checked across the same panoramas and consistently showed a clean,
 // well-composed hood shot, unlike smaller offsets (25°) or other candidates (45°/90°),
-// which still hit visible seams on some of them. Gen4 panoramas (no gap) are unaffected.
-const NADIR_GAP_FRONT_YAW_OFFSET = -20;
-const NADIR_GAP_BACK_YAW_OFFSET = -60;
+// which still hit visible seams on some of them. 8192px Gen4-tier panoramas are unaffected.
+const LOW_RES_FRONT_YAW_OFFSET = -20;
+const LOW_RES_BACK_YAW_OFFSET = -60;
 
-export async function renderCarViews(panoId, { pitch = -20, fov = 80, outW = 900, outH = 700, zoom = 3, roll = 0 } = {}) {
-  const equirect = await stitchEquirect(panoId, zoom);
-  const hasGap = hasNadirGap(equirect);
-  const frontYaw = hasGap ? NADIR_GAP_FRONT_YAW_OFFSET : 0;
-  const backYaw = 180 + (hasGap ? NADIR_GAP_BACK_YAW_OFFSET : 0);
+function isLowResolutionPanorama(resolutionHeight) {
+  return classifyResolutionHeight(resolutionHeight) !== RESOLUTION_CLASS.GEN4;
+}
+
+async function resolveResolutionHeight(panoId, resolutionHeight) {
+  if (Number.isFinite(resolutionHeight)) return resolutionHeight;
+  const meta = await getPanoMeta(panoId);
+  if (!Number.isFinite(meta.resolutionHeight)) {
+    throw new Error(`resolutionHeight is unavailable for panorama ${panoId}`);
+  }
+  return meta.resolutionHeight;
+}
+
+export async function renderCarViews(panoId, { pitch = -20, fov = 80, outW = 900, outH = 700, zoom = 3, roll = 0, resolutionHeight } = {}) {
+  const [equirect, resolvedHeight] = await Promise.all([
+    stitchEquirect(panoId, zoom),
+    resolveResolutionHeight(panoId, resolutionHeight),
+  ]);
+  const isLowResolution = isLowResolutionPanorama(resolvedHeight);
+  const resolutionClass = classifyResolutionHeight(resolvedHeight);
+  const frontYaw = isLowResolution ? LOW_RES_FRONT_YAW_OFFSET : 0;
+  const backYaw = 180 + (isLowResolution ? LOW_RES_BACK_YAW_OFFSET : 0);
   return {
     front: cropView(equirect, frontYaw, pitch, fov, outW, outH, roll),
     back: cropView(equirect, backYaw, pitch, fov, outW, outH, roll),
+    resolutionHeight: resolvedHeight,
+    resolutionClass,
   };
 }
 
@@ -196,29 +216,6 @@ export async function renderViews(panoId, views, { outW = 900, outH = 700, zoom 
 function pitchToRow(pitchDeg, eqH) {
   const lat = (-pitchDeg * Math.PI) / 180;
   return Math.round((lat / Math.PI + 0.5) * eqH);
-}
-
-// Older/lower-quality panoramas often have no imagery at all at the deepest nadir (Google
-// just never captured directly beneath the vehicle) — a solid black region visible in the
-// raw tiles, confirmed by inspecting them directly. Unlike the tile-seam mismatch (tried and
-// abandoned — see the NOTE near cropView), this is trivial to detect reliably: sample pixels
-// in the deep-nadir band and check how many are pure black. Used as a proxy for "this
-// panorama is old/Gen3-tier capture quality" — that same lower-quality capture era is where
-// the seam problem has shown up too, so panoramas with this gap get a small yaw nudge on
-// front/back to move off the exactly-on-a-tile-boundary position (see renderCarViews).
-export function hasNadirGap(equirect) {
-  const { data, width: eqW, height: eqH, channels } = equirect;
-  const rowStart = Math.min(pitchToRow(-70, eqH), pitchToRow(-89, eqH));
-  const rowEnd = Math.max(pitchToRow(-70, eqH), pitchToRow(-89, eqH));
-  let black = 0, total = 0;
-  for (let y = rowStart; y < rowEnd; y += 4) {
-    for (let x = 0; x < eqW; x += 8) {
-      const idx = (y * eqW + x) * channels;
-      if (data[idx] < 10 && data[idx + 1] < 10 && data[idx + 2] < 10) black++;
-      total++;
-    }
-  }
-  return total > 0 && black / total > 0.3;
 }
 
 // Crops a full 360°-wide horizontal band out of the raw equirectangular panorama, covering
@@ -251,19 +248,25 @@ export async function renderBand(panoId, opts = {}) {
 // the same as the year in the photometa "copyright" field (see pano-meta.mjs), which always
 // just reports the current date and carries no real per-panorama information.
 //
-// The watermark is tiled at a fixed *relative* position in the equirectangular canvas
-// regardless of scene content, so a single fixed crop (found empirically against a zoom=2
-// stitch, as a fraction of the 2048x1024 canvas) reliably lands on a legible instance for any
-// panorama — scaled proportionally in case stitchEquirect had to fall back to a lower zoom
-// (older panoramas without zoom=2 tiles available). It's small and low-contrast enough that
-// free OCR (tried: tesseract, EasyOCR) fails to read it reliably, so this is meant to be read
-// visually (the same way car color/generation are) rather than parsed automatically.
-function cropWatermark(equirect, { outW = 180 * 8, outH = 50 * 8 } = {}) {
+// The watermark's "©" glyph starts at a fixed *relative* position in the equirectangular
+// canvas regardless of scene content (found empirically against a zoom=2 stitch, as a
+// fraction of the 2048x1024 canvas), scaled proportionally in case stitchEquirect had to fall
+// back to a lower zoom (older panoramas without zoom=2 tiles available). But the full string
+// is NOT fixed-width: official Google coverage reads "© YYYY Google" while third-party
+// trekker/government imagery reads "© YYYY <agency name>" (see tag-copyright.mjs), which can
+// run well past a box sized for the short case and get clipped at the right edge. The box
+// below is padded generously — left/top margin around the glyph's known start, and a lot of
+// extra width/height beyond it — so long agency names still land fully inside the crop; the
+// extra sky/ground border this pulls in is harmless since the output is just downsized for
+// eyeballing, not parsed. It's small and low-contrast enough that free OCR (tried: tesseract,
+// EasyOCR) fails to read it reliably, so this is meant to be read visually (the same way car
+// color/generation are) rather than parsed automatically.
+function cropWatermark(equirect, { outW = 420 * 4, outH = 90 * 4 } = {}) {
   const { data, width: eqW, height: eqH, channels } = equirect;
-  const left = Math.round((140 / 2048) * eqW);
-  const top = Math.round((75 / 1024) * eqH);
-  const width = Math.round((180 / 2048) * eqW);
-  const height = Math.round((50 / 1024) * eqH);
+  const left = Math.round((110 / 2048) * eqW);
+  const top = Math.round((60 / 1024) * eqH);
+  const width = Math.round((420 / 2048) * eqW);
+  const height = Math.round((90 / 1024) * eqH);
   return sharp(data, { raw: { width: eqW, height: eqH, channels } })
     .extract({ left, top, width, height })
     .resize(outW, outH, { kernel: "lanczos3" })
@@ -301,17 +304,23 @@ export async function renderOverview(panoId, { outW = 1200, outH = 600, zoom = 3
 // the equirectangular warp turns the car into a hard-to-read curved streak, and older/lower-
 // quality panoramas can have genuinely blank (not buggy — Google just never captured it)
 // imagery at the deepest nadir, which shows up as a black gap in the band.
-export async function renderLocationBundle(panoId, { zoom = 3, pitch = -20, fov = 80 } = {}) {
-  const equirect = await stitchEquirect(panoId, zoom);
-  const hasGap = hasNadirGap(equirect);
-  const frontYaw = hasGap ? NADIR_GAP_FRONT_YAW_OFFSET : 0;
-  const backYaw = 180 + (hasGap ? NADIR_GAP_BACK_YAW_OFFSET : 0);
+export async function renderLocationBundle(panoId, { zoom = 3, pitch = -20, fov = 80, resolutionHeight } = {}) {
+  const [equirect, resolvedHeight] = await Promise.all([
+    stitchEquirect(panoId, zoom),
+    resolveResolutionHeight(panoId, resolutionHeight),
+  ]);
+  const isLowResolution = isLowResolutionPanorama(resolvedHeight);
+  const resolutionClass = classifyResolutionHeight(resolvedHeight);
+  const frontYaw = isLowResolution ? LOW_RES_FRONT_YAW_OFFSET : 0;
+  const backYaw = 180 + (isLowResolution ? LOW_RES_BACK_YAW_OFFSET : 0);
   return {
     front: cropView(equirect, frontYaw, pitch, fov, 900, 700, 0),
     back: cropView(equirect, backYaw, pitch, fov, 900, 700, 0),
     ground: cropBand(equirect, { pitchTop: -5, pitchBottom: -90, outW: 1800, outH: 340 }),
     sky: cropBand(equirect, { pitchTop: 60, pitchBottom: 0, outW: 1800, outH: 300 }),
     watermark: cropWatermark(equirect),
+    resolutionHeight: resolvedHeight,
+    resolutionClass,
   };
 }
 

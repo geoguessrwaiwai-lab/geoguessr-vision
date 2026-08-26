@@ -4,6 +4,31 @@
 
 import { Enum, Dbl, toProtobufUrl, fetchGoogleJson } from "./pb-url.mjs";
 
+export const RESOLUTION_HEIGHT = Object.freeze({
+  GEN1_MAX: 1664,
+  GEN2_GEN3_BADCAM: 6656,
+  GEN4: 8192,
+});
+
+export const RESOLUTION_CLASS = Object.freeze({
+  GEN1: "Gen1",
+  GEN2_GEN3_BADCAM: "Gen2 / Gen3 / badcam",
+  GEN4: "Gen4",
+  UNKNOWN: "Unknown",
+});
+
+// ResolutionHeight alone provides only these coarse camera-generation classes.
+// In particular, 6656 cannot distinguish Gen2, Gen3, and badcam.
+export function classifyResolutionHeight(resolutionHeight) {
+  if (!Number.isFinite(resolutionHeight)) return RESOLUTION_CLASS.UNKNOWN;
+  if (resolutionHeight <= RESOLUTION_HEIGHT.GEN1_MAX) return RESOLUTION_CLASS.GEN1;
+  if (resolutionHeight === RESOLUTION_HEIGHT.GEN4) return RESOLUTION_CLASS.GEN4;
+  if (resolutionHeight === RESOLUTION_HEIGHT.GEN2_GEN3_BADCAM) {
+    return RESOLUTION_CLASS.GEN2_GEN3_BADCAM;
+  }
+  return RESOLUTION_CLASS.UNKNOWN;
+}
+
 function buildMetaRequestUrl(panoId) {
   const toggles = [1, 2, 3, 4, 5, 6, 8, 12].map((n) => new Enum(n));
   const message = {
@@ -39,8 +64,11 @@ function buildMetaRequestUrl(panoId) {
 function parsePanoMessage(msg) {
   const orientation = msg[5][0][1][2]; // [headingDeg, pitchFromZenithDeg, rollDeg]
   const captureKind = msg[6]?.[5]?.[2];
+  const resolutionHeight = msg[2]?.[2]?.[0] ?? null;
   return {
     id: msg[1][1],
+    resolutionHeight,
+    resolutionClass: classifyResolutionHeight(resolutionHeight),
     lat: msg[5][0][1][0][2],
     lon: msg[5][0][1][0][3],
     headingDeg: orientation[0],
@@ -57,7 +85,8 @@ function parsePanoMessage(msg) {
   };
 }
 
-// Returns { id, headingDeg, pitchDeg, rollDeg, lat, lon, date, isScout } for a Street View panoId,
+// Returns { id, resolutionHeight, headingDeg, pitchDeg, rollDeg, lat, lon, date, isScout }
+// for a Street View panoId,
 // using the direction the camera vehicle actually faced (not the map-maker's chosen view angle).
 export async function getPanoMeta(panoId) {
   const data = await fetchGoogleJson(buildMetaRequestUrl(panoId));

@@ -6,9 +6,11 @@ import { mapConcurrent } from "../concurrency.mjs";
 // Usage: node capture-for-labeling.mjs <candidates.json> <outDir> [--concurrency=N] [--append] [--preset-gen=Gen3]
 //
 // For each candidate { panoId, headingDeg, date, lat, lon, sourceFile }, renders into
-// outDir/images/<panoId>/: front.jpg/back.jpg (perspective crops at nominal yaw 0°/180° — PRIMARY,
-// the car reads as a normal recognizable hood shape here) and ground.jpg (a full-360° nadir
-// band, kept only as a fallback for the rare case neither front nor back shows the car).
+// outDir/images/<panoId>/: front.jpg/back.jpg (perspective crops at nominal yaw 0°/180° — PRIMARY)
+// and watermark.jpg (the copyright-year crop). ground.jpg was dropped from this labeling
+// output — in practice it rarely showed the car any more legibly than front/back already did,
+// so it wasn't earning its place in the labeling UI (render-pano.mjs's renderLocationBundle
+// still produces it for other consumers, e.g. capture-locations.mjs's Claude-tagging flow).
 //
 // front/back use nominal yaw=0/180 (with Gen3-proxy offsets), NOT headingDeg — see
 // renderCarViews in render-pano.mjs for why
@@ -38,7 +40,7 @@ const concurrency = concurrencyArg ? parseInt(concurrencyArg.split("=")[1], 10) 
 const append = args.includes("--append");
 const presetGenArg = args.find((a) => a.startsWith("--preset-gen="));
 const presetGen = presetGenArg ? presetGenArg.split("=")[1] : null;
-const validGens = new Set(["Gen1", "Gen2", "Gen3", "Gen4", "Small cam"]);
+const validGens = new Set(["Gen1", "Gen2", "Gen3", "Gen4", "Shitcam"]);
 
 if (!candidatesPath || !outDir) {
   console.error("Usage: node capture-for-labeling.mjs <candidates.json> <outDir> [--concurrency=N] [--append] [--preset-gen=Gen3]");
@@ -69,15 +71,20 @@ const results = await mapConcurrent(candidates, concurrency, async (c, i) => {
   const dir = path.join(imagesDir, c.panoId);
   fs.mkdirSync(dir, { recursive: true });
   try {
-    const { front, back, ground } = await renderLocationBundle(c.panoId, { zoom: 3 });
+    const { front, back, watermark, resolutionHeight, resolutionClass } = await renderLocationBundle(c.panoId, {
+      zoom: 3,
+      resolutionHeight: c.resolutionHeight,
+    });
     await Promise.all([
       front.toFile(path.join(dir, "front.jpg")),
       back.toFile(path.join(dir, "back.jpg")),
-      ground.toFile(path.join(dir, "ground.jpg")),
+      watermark.toFile(path.join(dir, "watermark.jpg")),
     ]);
     console.log(`[${i + 1}/${candidates.length}] ${c.panoId} done`);
     return {
       panoId: c.panoId,
+      resolutionHeight,
+      resolutionClass,
       lat: c.lat,
       lon: c.lon,
       headingDeg: c.headingDeg,
@@ -89,7 +96,7 @@ const results = await mapConcurrent(candidates, concurrency, async (c, i) => {
       images: {
         front: `images/${c.panoId}/front.jpg`,
         back: `images/${c.panoId}/back.jpg`,
-        ground: `images/${c.panoId}/ground.jpg`,
+        watermark: `images/${c.panoId}/watermark.jpg`,
       },
     };
   } catch (e) {
