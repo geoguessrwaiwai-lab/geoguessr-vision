@@ -1,0 +1,8 @@
+node_modules/
+_review_tmp/
+label-tool/*.log
+label-tool/data/
+models/
+.DS_Store
+npm-debug.log*
+

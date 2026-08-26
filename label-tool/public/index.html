@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>Gen1-4 / Hood Color Labeler</title>
+<style>
+  :root {
+    --bg: #14161a; --panel: #1e2127; --border: #333844; --text: #e6e8eb; --muted: #9aa1ac;
+    --accent: #4f8cff; --good: #3ecf7e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, "Hiragino Kaku Gothic ProN", sans-serif; }
+  header { padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  header .meta { color: var(--muted); font-size: 13px; }
+  main { padding: 16px; width: 100%; }
+  .layout { display: flex; flex-direction: column; gap: 16px; }
+  .top { display: flex; align-items: stretch; gap: 12px; }
+  .images { flex: 2; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+  .primary-views { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  figure { margin: 0; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  figure.fallback { opacity: 0.75; }
+  figure img { width: 100%; display: block; background: #000; }
+  figcaption { padding: 6px 10px; font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; }
+  .streetview-embed { flex: 1; min-width: 0; border: 0; border-radius: 8px; background: var(--panel); }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .row { display: flex; flex-direction: row; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .row label.title { width: 140px; flex-shrink: 0; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .row .opts { display: flex; flex-wrap: wrap; gap: 6px; }
+  button.opt { background: #2a2e37; border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  button.opt:hover { background: #333846; }
+  button.opt.selected { background: var(--accent); border-color: var(--accent); color: white; }
+  button.opt kbd { opacity: 0.6; margin-left: 4px; font-size: 11px; }
+  input[type=text] { background: #14161a; border: 1px solid var(--border); color: var(--text); padding: 8px; border-radius: 6px; flex: 1; min-width: 220px; }
+  .actions { display: flex; flex-direction: row; gap: 10px; margin-top: 16px; }
+  .actions button { padding: 10px 16px; border-radius: 6px; border: none; font-size: 14px; cursor: pointer; }
+  .btn-save { background: var(--good); color: #062; font-weight: 600; }
+  .btn-skip { background: #444; color: var(--text); }
+  .btn-reject { background: #4a2020; color: #ff9b9b; border: 1px solid #7a3030; }
+  .btn-nav { background: #2a2e37; color: var(--text); }
+  .progress { font-size: 13px; color: var(--muted); }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 12px; line-height: 1.6; }
+  .done-banner { text-align: center; padding: 60px 20px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <div><strong>Gen1-4 / Hood Color Labeler</strong></div>
+  <div class="meta" id="meta"></div>
+  <div class="progress" id="progress"></div>
+</header>
+<main id="main">Loading...</main>
+
+<script>
+let items = [];
+let labels = {};
+let idx = 0;
+
+function isComplete(entry) {
+  if (!entry) return false;
+  if (entry.skipped || entry.rejected) return true;
+  if (!entry.gen) return false;
+  if (entry.gen === 'Small cam') return true; // color N/A for small cam
+  return !!entry.color;
+}
+
+async function load() {
+  items = await (await fetch('/api/items')).json();
+  labels = await (await fetch('/api/labels')).json();
+  idx = items.findIndex(it => !isComplete(labels[it.panoId]));
+  if (idx === -1) idx = 0;
+  render();
+}
+
+function state() {
+  const it = items[idx];
+  const existing = labels[it.panoId] || {};
+  return { it, existing };
+}
+
+let current = { gen: 'Gen3', carView: 'back', color: 'Black', colorCustom: '', confidence: 'high', notes: '' };
+
+function resetCurrent(existing) {
+  current = {
+    gen: existing.gen || 'Gen3',
+    carView: existing.carView || 'back',
+    color: existing.color || 'Black',
+    colorCustom: existing.colorCustom || '',
+    confidence: existing.confidence || 'high',
+    notes: existing.notes || '',
+  };
+}
+
+const GENS = ['Gen1', 'Gen2', 'Gen3', 'Gen4', 'Small cam'];
+const VIEWS = [['front', 'Front (F)'], ['back', 'Back (B)'], ['both', 'Both (O)'], ['neither', 'Neither (N)']];
+const COLORS = ['White', 'Blue', 'Blue Striped', 'Silver', 'Grey', 'Black', 'Black Striped', 'Red', 'Navy', 'Other', 'No Car'];
+
+function render() {
+  if (idx >= items.length) {
+    document.getElementById('main').innerHTML = `<div class="done-banner">全件レビュー完了しました(${items.length}件)。labels.json をご確認ください。</div>`;
+    document.getElementById('progress').textContent = '';
+    return;
+  }
+  const { it, existing } = state();
+  resetCurrent(existing);
+  const labeledCount = items.filter((it) => isComplete(labels[it.panoId])).length;
+  document.getElementById('progress').textContent = `${labeledCount} / ${items.length} labeled  (#${idx + 1})`;
+  const mapsUrl = `https://www.google.com/maps/@?api=1&map_action=pano&pano=${it.panoId}`;
+  document.getElementById('meta').innerHTML =
+    `${it.panoId} | ${it.date ?? '?'} | ${it.copyright ?? '?'} | ${it.sourceFile ?? ''} | ${it.lat?.toFixed(4)},${it.lon?.toFixed(4)} ` +
+    `<a href="${mapsUrl}" target="_blank" rel="noopener" style="color:var(--accent);margin-left:8px;">Google Mapで開く ↗</a>`;
+
+  const embedHeading = it.headingDeg ?? 0;
+  // The pb embed URL's "!5f" field isn't a raw fov degree value — it's a separate zoom
+  // number that maps to fov via fov ≈ -23.59*Z + 93.45. Empirically (screenshot-tested),
+  // Z=0 (fov≈93.45°) is already the most zoomed-out state settable through the URL; more
+  // negative Z clamps back to the same view. Further zoom-out is only reachable by the
+  // viewer's own interactive pinch/scroll, not via any URL parameter.
+  const embedUrl = `https://www.google.com/maps/embed?pb=!4v${Date.now()}!6m8!1m7!1s${it.panoId}!2m2!1d${it.lat}!2d${it.lon}!3f${embedHeading}!4f0!5f0`;
+
+  document.getElementById('main').innerHTML = `
+    <div class="layout">
+      <div class="top">
+        <div class="images">
+          <div class="primary-views">
+            <figure><img src="/${it.images.front}"><figcaption>Front (nominal yaw 0°; Gen3 proxy: -20°)</figcaption></figure>
+            <figure><img src="/${it.images.back}"><figcaption>Back (nominal yaw 180°; Gen3 proxy: 120°)</figcaption></figure>
+          </div>
+          <figure class="fallback"><img src="/${it.images.ground}"><figcaption>Ground — full 360° fallback (use only if car isn't in front/back)</figcaption></figure>
+        </div>
+        <iframe class="streetview-embed" src="${embedUrl}" allowfullscreen loading="lazy"></iframe>
+      </div>
+      <div class="panel">
+        <div class="row">
+          <label class="title">Generation</label>
+          <div class="opts">${GENS.map((g, i) => `<button class="opt" data-gen="${g}">${g} <kbd>${i + 1}</kbd></button>`).join('')}</div>
+        </div>
+        <div class="row">
+          <label class="title">Car shows which end</label>
+          <div class="opts">${VIEWS.map(([v, label]) => `<button class="opt" data-view="${v}">${label}</button>`).join('')}</div>
+        </div>
+        <div class="row" id="colorRow">
+          <label class="title">Hood color</label>
+          <div class="opts">${COLORS.map((c) => `<button class="opt" data-color="${c}">${c}</button>`).join('')}</div>
+          <input type="text" id="colorCustom" placeholder="自由入力(任意、Otherを選んだ場合など)" value="${current.colorCustom}">
+        </div>
+        <div class="row">
+          <label class="title">確信度</label>
+          <div class="opts">
+            <button class="opt" data-conf="high">High</button>
+            <button class="opt" data-conf="low">Low</button>
+          </div>
+        </div>
+        <div class="row">
+          <label class="title">メモ</label>
+          <input type="text" id="notes" placeholder="任意メモ" value="${current.notes}">
+        </div>
+        <div class="actions">
+          <button class="btn-nav" id="prevBtn">◀ Prev</button>
+          <button class="btn-skip" id="skipBtn">Skip (S)</button>
+          <button class="btn-reject" id="rejectBtn">Reject (X)</button>
+          <button class="btn-save" id="saveBtn">Save &amp; Next (Enter)</button>
+          <button class="btn-nav" id="nextBtn">Next ▶</button>
+        </div>
+        <div class="hint">数字キー1-4=世代 / F,B,O,N=車の見え方 / Enter=保存して次へ / S=スキップ(後で判断) / X=Reject(学習素材として不適切なので除外) / ←→=移動(保存なし)</div>
+      </div>
+    </div>
+  `;
+
+  syncButtons();
+  attachHandlers();
+}
+
+function setGen(g) {
+  current.gen = g;
+  if (g === 'Gen3') current.carView = 'back';
+  else if (g === 'Small cam') { current.color = null; current.colorCustom = ''; current.carView = 'both'; }
+  syncButtons();
+}
+
+function syncButtons() {
+  document.querySelectorAll('[data-gen]').forEach(b => b.classList.toggle('selected', b.dataset.gen === current.gen));
+  document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('selected', b.dataset.view === current.carView));
+  document.querySelectorAll('[data-color]').forEach(b => b.classList.toggle('selected', b.dataset.color === current.color));
+  document.querySelectorAll('[data-conf]').forEach(b => b.classList.toggle('selected', b.dataset.conf === current.confidence));
+  const colorRow = document.getElementById('colorRow');
+  if (colorRow) colorRow.style.display = current.gen === 'Small cam' ? 'none' : '';
+  const colorCustomEl = document.getElementById('colorCustom');
+  if (colorCustomEl) colorCustomEl.value = current.colorCustom;
+}
+
+function attachHandlers() {
+  document.querySelectorAll('[data-gen]').forEach(b => b.onclick = () => setGen(b.dataset.gen));
+  document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { current.carView = b.dataset.view; syncButtons(); });
+  document.querySelectorAll('[data-color]').forEach(b => b.onclick = () => { current.color = b.dataset.color; syncButtons(); });
+  document.querySelectorAll('[data-conf]').forEach(b => b.onclick = () => { current.confidence = b.dataset.conf; syncButtons(); });
+  document.getElementById('colorCustom').oninput = (e) => current.colorCustom = e.target.value;
+  document.getElementById('notes').oninput = (e) => current.notes = e.target.value;
+  document.getElementById('saveBtn').onclick = save;
+  document.getElementById('skipBtn').onclick = skip;
+  document.getElementById('rejectBtn').onclick = reject;
+  document.getElementById('prevBtn').onclick = () => { idx = Math.max(0, idx - 1); render(); };
+  document.getElementById('nextBtn').onclick = () => { idx = Math.min(items.length, idx + 1); render(); };
+}
+
+async function save() {
+  const it = items[idx];
+  const payload = { panoId: it.panoId, ...current };
+  await fetch('/api/label', { method: 'POST', body: JSON.stringify(payload) });
+  labels[it.panoId] = payload;
+  idx++;
+  render();
+}
+
+async function skip() {
+  const it = items[idx];
+  await fetch('/api/label', { method: 'POST', body: JSON.stringify({ panoId: it.panoId, skip: true }) });
+  labels[it.panoId] = { skipped: true };
+  idx++;
+  render();
+}
+
+async function reject() {
+  const it = items[idx];
+  const reason = current.notes || '';
+  await fetch('/api/label', { method: 'POST', body: JSON.stringify({ panoId: it.panoId, reject: true, reason }) });
+  labels[it.panoId] = { rejected: true, reason };
+  idx++;
+  render();
+}
+
+document.addEventListener('keydown', (e) => {
+  if (document.activeElement.tagName === 'INPUT') {
+    if (e.key === 'Enter') { e.target.blur(); }
+    return;
+  }
+  if (idx >= items.length) return;
+  if (['1', '2', '3', '4', '5'].includes(e.key)) { setGen(GENS[parseInt(e.key) - 1]); }
+  else if (e.key.toLowerCase() === 'f') { current.carView = 'front'; syncButtons(); }
+  else if (e.key.toLowerCase() === 'b') { current.carView = 'back'; syncButtons(); }
+  else if (e.key.toLowerCase() === 'o') { current.carView = 'both'; syncButtons(); }
+  else if (e.key.toLowerCase() === 'n') { current.carView = 'neither'; syncButtons(); }
+  else if (e.key.toLowerCase() === 's') { skip(); }
+  else if (e.key.toLowerCase() === 'x') { reject(); }
+  else if (e.key === 'Enter') { save(); }
+  else if (e.key === 'ArrowLeft') { idx = Math.max(0, idx - 1); render(); }
+  else if (e.key === 'ArrowRight') { idx = Math.min(items.length, idx + 1); render(); }
+});
+
+load();
+</script>
+</body>
+</html>
