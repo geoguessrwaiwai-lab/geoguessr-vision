@@ -1,5 +1,6 @@
 {
   "name": "Gen4 vs Smallcam",
   "generations": ["Gen4", "Smallcam"],
-  "colorGens": ["Gen4"]
+  "colorGens": ["Gen4"],
+  "collectWatermark": true
 }

@@ -25,10 +25,10 @@ GoogleのAPIキーは一切不要で、ノーコストで実行できます。
 | `tag-watermark-year.ts`            | 透かしの年号をOCRで自動タグ付け(Gen4/Smallcamのみ、読み取れない場合は`©unclear`)                                                                                                                                 |
 | `tag-shitcam.ts`                   | 既知の国・撮影日の組み合わせからShitcamを自動タグ付け(画像判定不要)                                                                                                                                              |
 | `shared/generations.ts`            | カノニカルな世代語彙(`Gen1`/`Gen2`/`Gen3`/`Gen4`/`Smallcam`/`Shitcam`)と`COLOR_GENS`(車体色収集の対象、現状Gen4のみ)の定義                                                                                       |
-| `label-tool/resolve-locations.ts`  | Valiが出力する生のロケーションJSON(`{lat, lng, heading, extra.tags, panoId}`)を、panoIdごとに`getPanoMeta()`で補完して学習用`candidates.json`形式に変換。デフォルトで`resolutionHeight===6656`のみ残す(下記参照) |
-| `label-tool/capture-for-labeling.ts` | 候補ごとにfront/back/watermarkをレンダリングし、ラベリングツールが読む`items.json`を生成(`--preset-gen`で既知世代を仮ラベル可)                                                                                  |
-| `label-tool/server.ts`             | 世代・車体色をラベリングするローカルWebツール本体(下記参照)                                                                                                                                                      |
-| `label-tool/migrate-label-format.ts` | 旧形式ラベルの移行・棄却済み地点のデータセットからの除去                                                                                                                                                       |
+| `label-tool/pipeline/resolve-locations.ts`  | Valiが出力する生のロケーションJSON(`{lat, lng, heading, extra.tags, panoId}`)を、panoIdごとに`getPanoMeta()`で補完して学習用`candidates.json`形式に変換。デフォルトで`resolutionHeight===6656`のみ残す(下記参照) |
+| `label-tool/pipeline/capture-for-labeling.ts` | 候補ごとにfront/back/watermarkをレンダリングし、ラベリングツールが読む`items.json`を生成(`--preset-gen`で既知世代を仮ラベル可)                                                                                  |
+| `label-tool/ui/server.ts`             | 世代・車体色をラベリングするローカルWebツール本体(下記参照)                                                                                                                                                      |
+| `label-tool/pipeline/migrate-label-format.ts` | 棄却済み地点(ラベリングUIでXキー)のlabels/items/candidates/imagesからの除去                                                                                                                                     |
 | `label-tool/<model-name>/`         | モデルごとのデータフォルダ(`items.json`/`labels.json`/`images/`/`model.json`)。現在: `gen2-vs-gen3/`, `gen4-smallcam/`                                                                                          |
 | `models/`(gitignore対象)           | 学習済みモデルの出力先                                                                                                                                                                                           |
 
@@ -55,33 +55,34 @@ GoogleのAPIキーは一切不要で、ノーコストで実行できます。
 {
   "name": "Gen2 vs Gen3",
   "generations": ["Gen2", "Gen3", "Shitcam"],
-  "colorGens": []
+  "colorGens": [],
+  "collectWatermark": false
 }
 ```
 
-`label-tool/server.ts`は起動時に`<dataDir>/model.json`を読み、ラベリングUIの選択肢(世代ボタン・車体色収集の対象)をそこから動的に切り替える。HTML/サーバーのコード自体はモデル間で共有し、フォルダを切り替えるだけでモデルごとの見た目になる(`model.json`が無い古いフォルダは全世代フォールバックで動く)。複数モデルを扱う場合は`label-tool/<model-a>/`, `label-tool/<model-b>/`のように並べて増やす。現在あるモデル:
+`label-tool/ui/server.ts`は起動時に`<dataDir>/model.json`を読み、ラベリングUIの選択肢(世代ボタン・車体色収集の対象・透かし画像の表示有無)をそこから動的に切り替える。`collectWatermark`は`capture-for-labeling.ts`もdataDir/model.jsonから読み、trueの場合のみwatermark.jpgをレンダリング・書き出しする(著作権年はGen4/Smallcamの地点でしか意味を持たないため)。HTML/サーバーのコード自体はモデル間で共有し、フォルダを切り替えるだけでモデルごとの見た目になる(`model.json`が無い古いフォルダは全世代・watermarkありのフォールバックで動く)。複数モデルを扱う場合は`label-tool/<model-a>/`, `label-tool/<model-b>/`のように並べて増やす。現在あるモデル:
 
-| フォルダ                    | `generations`               | `colorGens` |
-| ---------------------------- | ---------------------------- | ------------ |
-| `label-tool/gen2-vs-gen3/`   | `Gen2` / `Gen3` / `Shitcam`  | (なし)       |
-| `label-tool/gen4-smallcam/`  | `Gen4` / `Smallcam`          | `Gen4`       |
+| フォルダ                    | `generations`               | `colorGens` | `collectWatermark` |
+| ---------------------------- | ---------------------------- | ------------ | -------------------- |
+| `label-tool/gen2-vs-gen3/`   | `Gen2` / `Gen3` / `Shitcam`  | (なし)       | `false`              |
+| `label-tool/gen4-smallcam/`  | `Gen4` / `Smallcam`          | `Gen4`       | `true`               |
 
-候補プールのJSON(`candidates-*.json`)もモデルのデータフォルダの中に置く(例: `label-tool/gen2-vs-gen3/candidates-au-rural.json`)。まだどのモデル用か決まっていない/resolutionHeightで絞り込んでいない生の候補プール(`label-tool/candidates.json`)はモデルフォルダの外に置く。
+候補プールのJSON(`candidates/*.json`)はモデルのデータフォルダの中の`candidates/`サブフォルダに置く(例: `label-tool/gen2-vs-gen3/candidates/au-rural.json`)。まだどのモデル用か決まっていない/resolutionHeightで絞り込んでいない生の候補プールはモデルフォルダの外に置く。
 
 ### 候補プールの用意からラベリングまでの手順
 
-学習データ用のpanoId候補プールは[Vali](https://github.com/geoguessrwaiwai-lab/Vali)側で生成する(このリポジトリでは生成しない)。Valiが出力する生のロケーションJSON(`{ lat, lng, heading, extra: { tags }, panoId }`の配列)は、`label-tool/resolve-locations.ts`でpanoIdごとの実メタデータ(`headingDeg`/`date`/`resolutionHeight`/`countryCode`/`isScout`)を補って`candidates.json`形式に変換してから`label-tool/`に渡す:
+学習データ用のpanoId候補プールは[Vali](https://github.com/geoguessrwaiwai-lab/Vali)側で生成する(このリポジトリでは生成しない)。Valiが出力する生のロケーションJSON(`{ lat, lng, heading, extra: { tags }, panoId }`の配列)は、`label-tool/pipeline/resolve-locations.ts`でpanoIdごとの実メタデータ(`headingDeg`/`date`/`resolutionHeight`/`countryCode`/`isScout`)を補って`candidates.json`形式に変換してから`label-tool/`に渡す:
 
 ```bash
-npx tsx label-tool/resolve-locations.ts /path/to/vali-output/xx-locations.json label-tool/<model-name>/candidates.json
+npx tsx label-tool/pipeline/resolve-locations.ts /path/to/vali-output/xx-locations.json label-tool/<model-name>/candidates/xx.json
 ```
 
 デフォルトでは`resolutionHeight===6656`(Gen2/Gen3/Shitcamの可能性がある地点)のみに絞り込む。Gen1/Gen4も含めた全世代を集めたい場合は`--all-resolutions`を付ける。
 
 ```bash
 cd label-tool
-npx tsx capture-for-labeling.ts <model-name>/candidates.json ./<model-name> --append
-npx tsx server.ts ./<model-name>
+npx tsx pipeline/capture-for-labeling.ts <model-name>/candidates/xx.json ./<model-name> --append
+npx tsx ui/server.ts ./<model-name>
 # → http://localhost:4173 でラベリング
 ```
 
@@ -89,12 +90,12 @@ npx tsx server.ts ./<model-name>
 
 ```bash
 cd label-tool
-npx tsx capture-for-labeling.ts /path/to/vali-output/gen3-country-candidates.json ./<model-name> --append --preset-gen=Gen3
+npx tsx pipeline/capture-for-labeling.ts /path/to/vali-output/gen3-country-candidates.json ./<model-name> --append --preset-gen=Gen3
 ```
 
 Gen3トレッカー(Googleメタデータの`scout`フラグが立った地点)の除外はVali側の候補生成時に行う。既知の世代は`labels.json`へGen3として設定される。車体色は画像レビュー時に追記できる。
 
-ラベリングツールは各地点について**Front/Back(真の進行方向とその180°反対)**、著作権年を読むための**Watermark**、埋め込みのStreet Viewビューアを表示する。
+ラベリングツールは各地点について**Front/Back(真の進行方向とその180°反対)**、埋め込みのStreet Viewビューアを表示する。加えて、モデルの`collectWatermark`がtrueの場合のみ著作権年を読むための**Watermark**画像も表示する(現状Gen4/Smallcamモデルのみ)。
 
 ラベル構造(モデルの`model.json`の`generations`/`colorGens`で選択肢を絞る):
 
@@ -105,10 +106,10 @@ Gen3トレッカー(Googleメタデータの`scout`フラグが立った地点)�
 
 キーボード操作: `1-N`(Nはそのモデルの世代数)=世代、`F/B/O/N`=車体・ブラーの見え方(`colorGens`対象の世代のみ)、`Enter`=保存して次へ、`S`=スキップ、`X`=棄却、`←→`=移動。
 
-旧形式のラベルを移行し、棄却済み地点をデータセットから取り除く場合:
+棄却済み地点をデータセットから取り除く場合:
 
 ```bash
-npx tsx label-tool/migrate-label-format.ts label-tool/<model-name> label-tool/<model-name>/candidates-*.json
+npx tsx label-tool/pipeline/migrate-label-format.ts label-tool/<model-name> label-tool/<model-name>/candidates/*.json
 ```
 
 進捗は`label-tool/<model-name>/labels.json`に自動保存され、閉じても再開可能。

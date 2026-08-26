@@ -61,6 +61,7 @@ let idx = 0;
 // load()内で実際の値に差し替えられるまでのプレースホルダ。
 let GENS = [];
 let COLOR_GENS = new Set();
+let COLLECT_WATERMARK = true;
 const VIEWS = [['front', 'Front (F)'], ['back', 'Back (B)'], ['both', 'Both (O)'], ['neither', 'Neither (N)']];
 const COLORS = ['White', 'Blue', 'Blue Striped', 'Silver', 'Grey', 'Black', 'Black Striped', 'Red', 'Navy', 'Other'];
 
@@ -89,6 +90,7 @@ async function load() {
   const config = await (await fetch('/api/config')).json();
   GENS = config.generations;
   COLOR_GENS = new Set(config.colorGens ?? []);
+  COLLECT_WATERMARK = config.collectWatermark ?? true;
   document.getElementById('modelName').textContent = config.name;
   document.title = config.name;
   items = await (await fetch('/api/items')).json();
@@ -192,9 +194,13 @@ function renderTop(it) {
   // negative Z clamps back to the same view. Further zoom-out is only reachable by the
   // viewer's own interactive pinch/scroll, not via any URL parameter.
   const embedUrl = `https://www.google.com/maps/embed?pb=!4v${Date.now()}!6m8!1m7!1s${it.panoId}!2m2!1d${it.lat}!2d${it.lon}!3f${embedHeading}!4f0!5f0`;
-  const watermarkFigure = it.images.watermark
-    ? `<figure class="watermark"><img src="/${it.images.watermark}"><figcaption>Copyright watermark year</figcaption></figure>`
-    : `<figure class="watermark"><figcaption>Watermark not captured — rerun capture-for-labeling</figcaption></figure>`;
+  const secondaryViews = COLLECT_WATERMARK
+    ? `<div class="secondary-views">
+        ${it.images.watermark
+          ? `<figure class="watermark"><img src="/${it.images.watermark}"><figcaption>Copyright watermark year</figcaption></figure>`
+          : `<figure class="watermark"><figcaption>Watermark not captured — rerun capture-for-labeling</figcaption></figure>`}
+      </div>`
+    : '';
 
   document.getElementById('topSection').innerHTML = `
     <div class="images">
@@ -202,9 +208,7 @@ function renderTop(it) {
         <figure><img src="/${it.images.front}"><figcaption>Front (${it.resolutionHeight ?? '?'}px; ${it.resolutionClass ?? 'Unknown'}; yaw: ${frontYaw})</figcaption></figure>
         <figure><img src="/${it.images.back}"><figcaption>Back (${it.resolutionHeight ?? '?'}px; ${it.resolutionClass ?? 'Unknown'}; yaw: ${backYaw})</figcaption></figure>
       </div>
-      <div class="secondary-views">
-        ${watermarkFigure}
-      </div>
+      ${secondaryViews}
     </div>
     <iframe class="streetview-embed" src="${embedUrl}" allowfullscreen loading="lazy"></iframe>
   `;

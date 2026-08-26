@@ -1,17 +1,20 @@
 import fs from "node:fs";
 import path from "node:path";
-import { renderLocationBundle } from "../render-pano.ts";
-import { mapConcurrent } from "../concurrency.ts";
-import { positionalArgs, getFlagInt, hasFlag, getFlagValue } from "../shared/cli-args.ts";
-import { isGeneration } from "../shared/generations.ts";
-import type { Generation } from "../shared/generations.ts";
-import type { LabelItem, LabelsFile } from "../shared/types.ts";
+import { renderLocationBundle } from "../../render-pano.ts";
+import { mapConcurrent } from "../../concurrency.ts";
+import { positionalArgs, getFlagInt, hasFlag, getFlagValue } from "../../shared/cli-args.ts";
+import { isGeneration } from "../../shared/generations.ts";
+import type { Generation } from "../../shared/generations.ts";
+import type { LabelItem, LabelsFile } from "../../shared/types.ts";
 
 // 使い方: npx tsx capture-for-labeling.ts <candidates.json> <outDir> [--concurrency=N] [--append] [--preset-gen=Gen3]
 //
 // 各候補 { panoId, headingDeg, date, lat, lon, sourceFile } について、
 // outDir/images/<panoId>/ にレンダリングする: front.jpg/back.jpg(想定yaw 0°/180°での
-// 透視投影クロップ)とwatermark.jpg(著作権年のクロップ)。
+// 透視投影クロップ)。加えて、outDir/model.jsonの`collectWatermark`がtrueの場合のみ
+// watermark.jpg(著作権年のクロップ)も書き出す — 著作権年はGen4/Smallcamの地点でしか
+// 意味を持たないため(README参照)、Gen2/Gen3など不要なモデルでは無駄なレンダリング・
+// ディスク書き込みを避ける。
 //
 // front/backは想定yaw=0/180(Gen3代替オフセット付き)を使い、headingDegは使わない —
 // 理由はrender-pano.tsのrenderCarViews参照。headingDegは記述的なメタデータ(yaw=0が
@@ -61,6 +64,11 @@ async function main() {
   // 必要な箇所でキャストが必要になってしまう)。
   const presetGen: Generation | null = presetGenArg && isGeneration(presetGenArg) ? presetGenArg : null;
 
+  const modelConfigPath = path.join(outDir, "model.json");
+  const collectWatermark = fs.existsSync(modelConfigPath)
+    ? (JSON.parse(fs.readFileSync(modelConfigPath, "utf8")).collectWatermark ?? true)
+    : true;
+
   const allCandidates: Candidate[] = JSON.parse(fs.readFileSync(candidatesPath, "utf8"));
   const imagesDir = path.join(outDir, "images");
   fs.mkdirSync(imagesDir, { recursive: true });
@@ -83,11 +91,9 @@ async function main() {
         zoom: 3,
         resolutionHeight: c.resolutionHeight,
       });
-      await Promise.all([
-        front.toFile(path.join(dir, "front.jpg")),
-        back.toFile(path.join(dir, "back.jpg")),
-        watermark.toFile(path.join(dir, "watermark.jpg")),
-      ]);
+      const writes = [front.toFile(path.join(dir, "front.jpg")), back.toFile(path.join(dir, "back.jpg"))];
+      if (collectWatermark) writes.push(watermark.toFile(path.join(dir, "watermark.jpg")));
+      await Promise.all(writes);
       console.log(`[${i + 1}/${candidates.length}] ${c.panoId} done`);
       return {
         panoId: c.panoId,
@@ -103,7 +109,7 @@ async function main() {
         images: {
           front: `images/${c.panoId}/front.jpg`,
           back: `images/${c.panoId}/back.jpg`,
-          watermark: `images/${c.panoId}/watermark.jpg`,
+          ...(collectWatermark ? { watermark: `images/${c.panoId}/watermark.jpg` } : {}),
         },
       };
     } catch (e) {

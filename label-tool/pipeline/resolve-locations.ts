@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import { getPanoMeta } from "../pano-meta.ts";
-import { mapConcurrent } from "../concurrency.ts";
-import { getFlagInt, hasFlag, positionalArgs } from "../shared/cli-args.ts";
+import { getPanoMeta } from "../../pano-meta.ts";
+import { mapConcurrent } from "../../concurrency.ts";
+import { getFlagInt, hasFlag, positionalArgs } from "../../shared/cli-args.ts";
 
 // 使い方: npx tsx label-tool/resolve-locations.ts <raw-locations.json> <candidates-output.json> [--concurrency=N] [--all-resolutions]
 //

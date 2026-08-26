@@ -1,11 +1,10 @@
 node_modules/
 _review_tmp/
-label-tool/*.log
+label-tool/**/*.log
 label-tool/data/
-label-tool/public/data/
 # モデルごとのデータフォルダ(label-tool/<model-name>/)のうち、画像・ラベル本体・
 # 候補メタデータは容量が大きい/再生成可能なのでコミットしない。model.jsonと
-# candidates-*.json(候補プール)は小さく、モデル定義そのものなので追跡する。
+# candidates/*.json(候補プール)は小さく、モデル定義そのものなので追跡する。
 label-tool/*/images/
 label-tool/*/items.json
 label-tool/*/labels.json

@@ -101,7 +101,7 @@ export interface LabelItem {
   isScout?: boolean;
   countryCode?: string | null;
   sourceFile: string;
-  images: { front: string; back: string; watermark: string };
+  images: { front: string; back: string; watermark?: string };
 }
 
 /** label-tool が labels.json に書き出す通常ラベル1件分。 */

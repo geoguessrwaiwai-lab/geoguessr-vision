@@ -1,8 +1,8 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
-import { GENERATIONS, COLOR_GENS as DEFAULT_COLOR_GENS } from "../shared/generations.ts";
-import type { LabelEntry, LabelsFile, LabelToolConfig } from "../shared/types.ts";
+import { GENERATIONS, COLOR_GENS as DEFAULT_COLOR_GENS } from "../../shared/generations.ts";
+import type { LabelEntry, LabelsFile, LabelToolConfig } from "../../shared/types.ts";
 
 // 使い方: npx tsx server.ts <dataDir> [port]
 // dataDirにはitems.json(capture-for-labeling.tsが生成)とimages/が必要。
@@ -24,7 +24,8 @@ const labelsPath = path.join(dataDir, "labels.json");
 const configPath = path.join(dataDir, "model.json");
 // import.meta.dirnameはNode 20.11+/21.2+で使える比較的新しいAPI。tsxはホストのNode
 // ランタイム上で動くため、これより古いNodeでは動作しない点に注意。
-const publicDir = path.join(import.meta.dirname, "public");
+// index.htmlはこのファイルと同じディレクトリ(label-tool/ui/)に置く。
+const publicDir = import.meta.dirname;
 
 const config: LabelToolConfig = fs.existsSync(configPath)
   ? JSON.parse(fs.readFileSync(configPath, "utf8"))
