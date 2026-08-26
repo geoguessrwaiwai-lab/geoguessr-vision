@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { getPanoMeta } from "../../pano-meta.ts";
+import { getPanoMeta, isKnownShitcam } from "../../pano-meta.ts";
 import { mapConcurrent } from "../../concurrency.ts";
 import { getFlagInt, hasFlag, positionalArgs } from "../../shared/cli-args.ts";
 
@@ -17,6 +17,11 @@ import { getFlagInt, hasFlag, positionalArgs } from "../../shared/cli-args.ts";
 //
 // デフォルトでは resolutionHeight===6656(Gen2/Gen3/Shitcamの可能性がある地点)だけを残す。
 // Gen1/Gen4も含めた全世代を集めたい場合は --all-resolutions を付ける。
+//
+// resolutionHeight===6656に絞り込む場合、isKnownShitcam()(pano-meta.ts参照、tag-shitcam.tsと
+// 同じ既知の国/期間テーブル)に一致する地点はGen2 vs Gen3の候補から除外する
+// (AGENTS.mdのモデル分割方針: Shitcamは対象外、ラベリング労力の無駄を避ける)。
+// これは限定的なテーブルなので、未知のShitcamが紛れ込む可能性は残る(意図的なfalse negative)。
 
 interface RawLocation {
   lat: number;
@@ -61,6 +66,10 @@ async function main() {
     try {
       const meta = await getPanoMeta(loc.panoId);
       if (!allResolutions && meta.resolutionHeight !== 6656) return null;
+      if (!allResolutions && isKnownShitcam(meta)) {
+        console.log(`[${i + 1}/${withPanoId.length}] ${loc.panoId} known Shitcam (${meta.countryCode} ${meta.date}), skipping`);
+        return null;
+      }
       console.log(`[${i + 1}/${withPanoId.length}] ${loc.panoId} resolutionHeight=${meta.resolutionHeight}`);
       return {
         panoId: loc.panoId,
