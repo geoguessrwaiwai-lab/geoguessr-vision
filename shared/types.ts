@@ -77,6 +77,19 @@ export interface TagEntry {
   tags: string[];
 }
 
+/**
+ * label-tool の各データフォルダ(<dataDir>/model.json)が宣言する、そのモデル固有の
+ * ラベリング設定。モデルごとにデータフォルダを分ける(例: gen2-vs-gen3/)一方で、
+ * ラベリングUI・サーバー本体は1つのコードを共有する — 選択可能な世代やUIタイトルを
+ * このファイルから読むことで、コード重複なしにモデルごとの見た目を変える。
+ */
+export interface LabelToolConfig {
+  name: string;
+  generations: Generation[];
+  /** 車体色・ブラーの見え方を集める世代。省略時は空(このモデルでは色を扱わない)。 */
+  colorGens?: Generation[];
+}
+
 /** label-tool の items.json に書き出される1候補分のレコード。 */
 export interface LabelItem {
   panoId: string;
@@ -86,7 +99,6 @@ export interface LabelItem {
   lon: number;
   headingDeg: number;
   date: string;
-  copyright?: string | null;
   isScout?: boolean;
   countryCode?: string | null;
   sourceFile: string;

@@ -45,7 +45,6 @@ interface Candidate {
   lon: number;
   sourceFile: string;
   resolutionHeight?: number;
-  copyright?: string | null;
   isScout?: boolean;
   countryCode?: string | null;
 }
@@ -109,7 +108,6 @@ async function main() {
         lon: c.lon,
         headingDeg: c.headingDeg,
         date: c.date,
-        copyright: c.copyright,
         isScout: c.isScout,
         countryCode: c.countryCode,
         sourceFile: c.sourceFile,

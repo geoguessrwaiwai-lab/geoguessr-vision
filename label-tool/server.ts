@@ -1,13 +1,18 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
-import { isGeneration, COLOR_GENS } from "../shared/generations.ts";
-import type { LabelEntry, LabelsFile } from "../shared/types.ts";
+import { GENERATIONS, COLOR_GENS as DEFAULT_COLOR_GENS } from "../shared/generations.ts";
+import type { LabelEntry, LabelsFile, LabelToolConfig } from "../shared/types.ts";
 
 // 使い方: npx tsx server.ts <dataDir> [port]
 // dataDirにはitems.json(capture-for-labeling.tsが生成)とimages/が必要。
 // ラベルは<dataDir>/labels.jsonにpanoIdをキーとして永続化されるので、ツールを閉じて
 // 再度開いても進捗は失われない。
+//
+// <dataDir>/model.json があれば、そのモデル専用の設定(選択可能な世代・タイトルなど)
+// として読み込む。モデルごとにデータフォルダを分ける(例: gen2-vs-gen3/)ことで、
+// ラベリングUI・サーバーのコード自体は1つのまま、モデルごとに選択肢だけを変えられる。
+// model.jsonが無いデータフォルダ(移行前の古いもの)は、全世代を扱う従来の挙動にフォールバックする。
 
 const [, , dataDir, portArg] = process.argv;
 if (!dataDir) {
@@ -16,9 +21,16 @@ if (!dataDir) {
 }
 const port = portArg ? parseInt(portArg, 10) : 4173;
 const labelsPath = path.join(dataDir, "labels.json");
+const configPath = path.join(dataDir, "model.json");
 // import.meta.dirnameはNode 20.11+/21.2+で使える比較的新しいAPI。tsxはホストのNode
 // ランタイム上で動くため、これより古いNodeでは動作しない点に注意。
 const publicDir = path.join(import.meta.dirname, "public");
+
+const config: LabelToolConfig = fs.existsSync(configPath)
+  ? JSON.parse(fs.readFileSync(configPath, "utf8"))
+  : { name: path.basename(path.resolve(dataDir)), generations: [...GENERATIONS], colorGens: [...DEFAULT_COLOR_GENS] };
+const GENS = new Set(config.generations);
+const COLOR_GENS = new Set(config.colorGens ?? []);
 
 function loadLabels(): LabelsFile {
   if (!fs.existsSync(labelsPath)) return {};
@@ -34,26 +46,11 @@ function saveLabels(labels: LabelsFile) {
 // コピーで済むよう、意図的に同じにしている。Smallcamはそれ自体が独立した世代
 // (Gen4にぶら下がる機能ではなく兄弟世代)であり、Gen4と同じResolutionHeightを共有
 // しつつ見た目は明確に異なり、車体色を一切示さない。
-// GENERATIONS/COLOR_GENSの正準リストは shared/generations.ts に集約されている
-// (以前はこのファイル・label-tool/capture-for-labeling.ts・
-// label-tool/migrate-label-format.ts・tag-shitcam.tsなどでそれぞれ独自に重複定義していた)。
 const CAR_VIEWS = new Set(["front", "back", "both", "neither"]);
 
 function validateLabel(entry: any): string | null {
   if (typeof entry.panoId !== "string" || entry.panoId.length === 0) return "panoId is required";
-  if (!isGeneration(entry.gen)) return "invalid generation";
-
-  // 著作権/透かしの年の抽出は世代を問わず常に試みられる(README参照)ので、全ての世代が
-  // 正解ラベルとしての年も収集する。"unclear"はtag-watermark-year.tsの「©unclear」の
-  // フォールバックを反映している — 透かしの年は目視でもOCRと同じくらい判読不能なことが
-  // 多い。ここで無理に年を推測させると、自動OCRパスがまさに避けようとしていたのと同種の
-  // 信頼できないラベルで学習データを汚染してしまう。
-  const currentYear = new Date().getFullYear();
-  const validYear =
-    Number.isInteger(entry.copyrightYear) && entry.copyrightYear >= 2009 && entry.copyrightYear <= currentYear;
-  if (entry.copyrightYear !== "unclear" && !validYear) {
-    return `copyrightYear must be "unclear" or an integer from 2009 to ${currentYear}`;
-  }
+  if (!GENS.has(entry.gen)) return "invalid generation";
 
   if (!COLOR_GENS.has(entry.gen)) return null;
 
@@ -69,7 +66,6 @@ function normalizeLabel(entry: any): Omit<LabelEntry, "at"> {
     gen: entry.gen,
     confidence: entry.confidence ?? "high",
     notes: entry.notes ?? "",
-    copyrightYear: entry.copyrightYear,
   };
   if (COLOR_GENS.has(entry.gen)) {
     normalized.carView = entry.carView;
@@ -100,6 +96,12 @@ function serveFile(res: http.ServerResponse, filePath: string) {
 
 const server = http.createServer(async (req, res) => {
   const parsed = new URL(req.url ?? "/", "http://localhost");
+
+  if (parsed.pathname === "/api/config" && req.method === "GET") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(config));
+    return;
+  }
 
   if (parsed.pathname === "/api/items" && req.method === "GET") {
     const items = JSON.parse(fs.readFileSync(path.join(dataDir, "items.json"), "utf8"));
