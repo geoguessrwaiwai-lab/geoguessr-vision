@@ -2,7 +2,9 @@ node_modules/
 _review_tmp/
 label-tool/*.log
 label-tool/data/
+label-tool/public/data/
 models/
 .DS_Store
 npm-debug.log*
+*.traineddata
 

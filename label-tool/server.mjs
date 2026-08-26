@@ -25,10 +25,13 @@ function saveLabels(labels) {
   fs.writeFileSync(labelsPath, JSON.stringify(labels, null, 2));
 }
 
+// Values here are the same strings that end up in extra.tags on the final location JSON
+// (see README's tag vocabulary table) — kept identical so a label can be turned into tags by
+// copying fields, not translating them.
 const GENERATIONS = new Set(["Gen1", "Gen2", "Gen3", "Gen4", "Shitcam"]);
 const CAR_VIEWS = new Set(["front", "back", "both", "neither"]);
 const GEN3_FEATURES = new Set(["stubby antenna", "long antenna", "short antenna"]);
-const GEN4_FEATURES = new Set(["smallcam"]);
+const GEN4_FEATURES = new Set(["Smallcam"]);
 
 function validateLabel(entry) {
   if (typeof entry.panoId !== "string" || entry.panoId.length === 0) return "panoId is required";
@@ -41,15 +44,20 @@ function validateLabel(entry) {
   const allowedFeatures = entry.gen === "Gen3" ? GEN3_FEATURES : GEN4_FEATURES;
   if (features.some((feature) => !allowedFeatures.has(feature))) return `invalid feature for ${entry.gen}`;
 
-  const smallcam = features.includes("smallcam");
+  const smallcam = features.includes("Smallcam");
   if (!CAR_VIEWS.has(entry.carView)) return "invalid car view";
-  if (smallcam && entry.carView !== "both") return "smallcam must use carView=both";
+  if (smallcam && entry.carView !== "both") return "Smallcam must use carView=both";
   if (!smallcam && entry.carView !== "neither" && !entry.color) return "color is required when the car is visible";
   if ((smallcam || entry.carView === "neither") && entry.color != null) return "color must be null for smallcam or neither";
 
+  // "unclear" mirrors tag-watermark-year.mjs's "©unclear" fallback — the watermark year is
+  // baked into the render just like copyright year is, and it's just as often illegible by
+  // eye as it is by OCR. Forcing a guessed year here would poison training data with the same
+  // kind of unreliable label the automated OCR path was built to avoid.
   const currentYear = new Date().getFullYear();
-  if (!Number.isInteger(entry.copyrightYear) || entry.copyrightYear < 2009 || entry.copyrightYear > currentYear) {
-    return `copyrightYear must be an integer from 2009 to ${currentYear}`;
+  const validYear = Number.isInteger(entry.copyrightYear) && entry.copyrightYear >= 2009 && entry.copyrightYear <= currentYear;
+  if (entry.copyrightYear !== "unclear" && !validYear) {
+    return `copyrightYear must be "unclear" or an integer from 2009 to ${currentYear}`;
   }
   return null;
 }

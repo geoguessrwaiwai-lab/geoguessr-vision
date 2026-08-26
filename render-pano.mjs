@@ -273,11 +273,13 @@ function cropWatermark(equirect, { outW = 420 * 4, outH = 90 * 4 } = {}) {
     .jpeg({ quality: 95 });
 }
 
-export async function renderWatermarkCrop(panoId, opts = {}) {
+export async function renderWatermarkCrop(panoId, { zoom = 2, ...cropOpts } = {}) {
   // zoom=2 has enough resolution for a legible watermark and is far cheaper than zoom=3
   // (8 tiles vs. 32) when this is called on its own rather than via renderLocationBundle.
-  const equirect = await stitchEquirect(panoId, 2);
-  return cropWatermark(equirect, opts);
+  // tag-watermark-year.mjs deliberately stitches at both zoom=2 and zoom=3 for the same
+  // panorama and cross-checks the OCR result from each against the other.
+  const equirect = await stitchEquirect(panoId, zoom);
+  return cropWatermark(equirect, cropOpts);
 }
 
 // Downsamples the full equirectangular panorama (all 360° x full vertical range) to a

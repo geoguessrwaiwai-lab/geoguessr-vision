@@ -23,6 +23,7 @@ npm install
 | `capture-locations.mjs`  | 地点JSON一括処理。各地点のground/sky帯+透かしクロップをレンダリング + manifest出力        |
 | `apply-tags.mjs`         | タグ付け結果を`extra.tags`にマージして保存                                                |
 | `tag-copyright.mjs`      | 著作権(撮影主体)を自動判定してタグ付け(画像判定不要、下記参照)                            |
+| `tag-watermark-year.mjs` | 透かしの年号をOCRで自動タグ付け(読み取れない場合は`Watermark 不鮮明`、下記参照)          |
 | `gather-candidates.mjs`  | 学習データ収集用に、既存の`*-locations.json`や海外の代表地点からpanoIdの候補プールを作成  |
 | `label-tool/`            | 世代・Smallcam/アンテナ特徴・車体色・著作権年をラベリングするローカルWebツール             |
 | `models/`(gitignore対象) | 学習済みモデルの出力先                                                                    |
@@ -81,9 +82,36 @@ node apply-tags.mjs input.json tags.json output.json
 | 著作権の**年号**(例: `2026`)      | 同じ`copyright`フィールドの年部分                                   | ⚠️**常にリクエストした「今日の年」を返すだけで、パノラマ固有の情報ではない**。使わないこと | —                             |
 | 透かしの年号(例: `© 2025 Google`) | 画像タイルに焼き込まれた透かし文字(`renderWatermarkCrop`で切り出し) | そのパノラマが最後に(再)処理された年。**撮影年度とは別物**で、後年に再処理されると変わる   | 目視(下記)                    |
 
-`tag-copyright.mjs`は団体名だけを`extra.tags`に追加し、意味のない年号部分は最初から捨てているので、その点は元々問題ありません。一方で「本当のその地点の透かし年号」が欲しい場合は、`capture-locations.mjs`が出力する`*-watermark.jpg`をレビュー時に一緒に読んでタグ化してください(下記の理由でOCRでの完全自動化は断念しました)。
+`tag-copyright.mjs`は団体名だけを`extra.tags`に追加し、意味のない年号部分は最初から捨てているので、その点は元々問題ありません。
+
+透かしの年号は、[igs](https://github.com/iggedi-ig-ig)氏の[copyright-labeller](https://github.com/iggedi-ig-ig/copyright-labeller)(著作権OCRツール、~2/3のカバー率・~95%の正解率とのこと)と同じ技術方針(OCRの認識文字種を透かしが取りうる文字だけに絞り、1回のOCR結果を鵜呑みにせず複数の検出が一致した場合だけ採用する)を採用した`tag-watermark-year.mjs`で自動タグ付けできます。
+
+```bash
+node tag-watermark-year.mjs input.json output.json --only-untagged
+```
+
+- 認識文字種を`0-9`・`Google`・スペースのみに制限(小さく低コントラストな文字に対する誤認識の大半はここで削れる)
+- 同じ切り出し画像に対しTesseractのページ分割モードを変えて2回OCRし、両方が同じ年で一致した場合のみ採用
+- 一致しなかった/年号が全く読めなかった場合は、黙ってスキップせず`©unclear`タグを付けて目視レビューに回す
+
+過去にtesseract/EasyOCRで断念したのは透かし単体のクロップに対する素のOCRで、今回は文字種制限とダブルチェックを組み合わせることである程度読み取れるようになりましたが、透かしの位置は世代によって差があり(古い撮影は上空付近に1箇所、Smallcam 2025など新しい撮影は路面付近に複数箇所繰り返し出現するなど)、`renderWatermarkCrop`の固定座標クロップが外れているパノラマは引き続き`不鮮明`になります。カバー率をさらに上げたい場合はクロップ位置の世代別対応が次の改善候補です。
 
 透かしは小さく低コントラストなため、tesseract・EasyOCRいずれも試しましたが実用的な精度で読み取れませんでした。ただし**equirect画像上の固定ピクセル位置に焼き込まれている**ため(シーン内容に依存しない)、`renderWatermarkCrop()`で同じ座標を切り出すだけで、どのパノラマでも人が読める程度には鮮明な画像が安定して得られます。
+
+## `extra.tags`の語彙統一
+
+`apply-tags.mjs`(手動/Claudeレビュー)・`tag-copyright.mjs`・`tag-watermark-year.mjs`、そして`label-tool`で集める学習ラベルは、すべて同じ文字列語彙を使います。学習ラベルの各フィールド(`gen`/`features`/`color`/`copyrightYear`)は、そのままこのタグ文字列として書き出せる形で保存しています。
+
+| 種別                   | 形式               | 例                                |
+| ---------------------- | ------------------ | --------------------------------- |
+| 世代                   | `GenN` / `Shitcam` | `Gen3`, `Gen4`, `Shitcam`         |
+| 特徴                   | 単語               | `Smallcam`                        |
+| 車体色                 | 単語               | `Red`, `Black`                    |
+| 車体色/特徴 + 透かし年 | `<色/特徴> <年>`   | `Blue 2026`, `Red 2022`, `Smallcam 2025` |
+| 透かしの年号           | `©YYYY` / `©unclear` | `©2022`, `©unclear`             |
+
+- 透かしの年号が読み取れない(目視でも不鮮明)場合は`©unclear`とし、タグ自体を省略しない。`tag-watermark-year.mjs`のOCRも`label-tool`の目視レビューも同じ表記を使う
+- 「車体色/特徴 + 透かし年」の組み合わせタグは、透かしの年号が判明している場合のみ付ける(`©unclear`の場合は組み合わせタグを作らず、単体の色/特徴タグと`©unclear`タグだけを付ける)
 
 ## 使い方2: Gen1-4 / 色の学習データを集める
 

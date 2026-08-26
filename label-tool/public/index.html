@@ -68,15 +68,25 @@ const GENS = ['Gen1', 'Gen2', 'Gen3', 'Gen4', 'Shitcam'];
 const DETAILED_GENS = new Set(['Gen3', 'Gen4']);
 const FEATURES = {
   Gen3: ['stubby antenna', 'long antenna', 'short antenna'],
-  Gen4: ['smallcam'],
+  Gen4: ['Smallcam'],
 };
 const VIEWS = [['front', 'Front (F)'], ['back', 'Back (B)'], ['both', 'Both (O)'], ['neither', 'Neither (N)']];
 const COLORS = ['White', 'Blue', 'Blue Striped', 'Silver', 'Grey', 'Black', 'Black Striped', 'Red', 'Navy', 'Other'];
 const COPYRIGHT_YEARS = Array.from({ length: new Date().getFullYear() - 2008 }, (_, i) => 2009 + i);
 
 function normalizeLegacyLabel(entry) {
-  if (!entry || entry.gen !== 'Small cam') return entry;
-  return { ...entry, gen: 'Gen4', features: ['smallcam'], carView: 'both', color: null, colorCustom: '' };
+  if (!entry) return entry;
+  if (entry.gen === 'Small cam') {
+    entry = { ...entry, gen: 'Gen4', features: ['Smallcam'], carView: 'both', color: null, colorCustom: '' };
+  }
+  if (Array.isArray(entry.features) && entry.features.includes('smallcam')) {
+    entry = { ...entry, features: entry.features.map((f) => (f === 'smallcam' ? 'Smallcam' : f)) };
+  }
+  return entry;
+}
+
+function isValidCopyrightYear(value) {
+  return value === 'unclear' || Number.isInteger(value);
 }
 
 function isComplete(entry) {
@@ -85,9 +95,9 @@ function isComplete(entry) {
   if (entry.skipped || entry.rejected) return true;
   if (!GENS.includes(entry.gen)) return false;
   if (!DETAILED_GENS.has(entry.gen)) return true;
-  if (!Number.isInteger(entry.copyrightYear)) return false;
+  if (!isValidCopyrightYear(entry.copyrightYear)) return false;
   if (!VIEWS.some(([view]) => view === entry.carView)) return false;
-  const smallcam = entry.features?.includes('smallcam');
+  const smallcam = entry.features?.includes('Smallcam');
   return smallcam || entry.carView === 'neither' || !!entry.color;
 }
 
@@ -124,7 +134,7 @@ function resetCurrent(existing, it) {
     carView: existing.carView || (gen === 'Gen3' ? 'back' : 'front'),
     color: existing.color || 'Black',
     colorCustom: existing.colorCustom || '',
-    copyrightYear: Number.isInteger(existing.copyrightYear) ? existing.copyrightYear : null,
+    copyrightYear: isValidCopyrightYear(existing.copyrightYear) ? existing.copyrightYear : null,
     confidence: existing.confidence || 'high',
     notes: existing.notes || '',
   };
@@ -132,7 +142,7 @@ function resetCurrent(existing, it) {
 }
 
 function hasSmallcam() {
-  return current.gen === 'Gen4' && current.features.includes('smallcam');
+  return current.gen === 'Gen4' && current.features.includes('Smallcam');
 }
 
 function enforceStateRules() {
@@ -213,7 +223,10 @@ function render(reset = false) {
         </div>` : ''}
         <div class="row">
           <label class="title">Copyright year</label>
-          <div class="year-groups">${yearGroups().map((group) => `<div class="year-group">${group.map((year) => `<label class="year-option"><input type="radio" name="copyrightYear" value="${year}" ${current.copyrightYear === year ? 'checked' : ''}><span>${year}</span></label>`).join('')}</div>`).join('')}</div>
+          <div class="year-groups">
+            ${yearGroups().map((group) => `<div class="year-group">${group.map((year) => `<label class="year-option"><input type="radio" name="copyrightYear" value="${year}" ${current.copyrightYear === year ? 'checked' : ''}><span>${year}</span></label>`).join('')}</div>`).join('')}
+            <div class="year-group"><label class="year-option"><input type="radio" name="copyrightYear" value="unclear" ${current.copyrightYear === 'unclear' ? 'checked' : ''}><span>©unclear</span></label></div>
+          </div>
         </div>` : '';
 
   document.getElementById('main').innerHTML = `
@@ -300,7 +313,7 @@ function attachHandlers() {
   document.querySelectorAll('[data-conf]').forEach(b => b.onclick = () => { current.confidence = b.dataset.conf; syncButtons(); });
   const colorCustom = document.getElementById('colorCustom');
   if (colorCustom) colorCustom.oninput = (e) => current.colorCustom = e.target.value;
-  document.querySelectorAll('input[name="copyrightYear"]').forEach(input => input.onchange = () => current.copyrightYear = Number(input.value));
+  document.querySelectorAll('input[name="copyrightYear"]').forEach(input => input.onchange = () => current.copyrightYear = input.value === 'unclear' ? 'unclear' : Number(input.value));
   document.getElementById('notes').oninput = (e) => current.notes = e.target.value;
   document.getElementById('saveBtn').onclick = save;
   document.getElementById('skipBtn').onclick = skip;
@@ -319,7 +332,7 @@ async function save() {
     notes: current.notes,
   };
   if (DETAILED_GENS.has(current.gen)) {
-    if (!current.copyrightYear) return alert('著作権年を選択してください。');
+    if (!isValidCopyrightYear(current.copyrightYear)) return alert('著作権年を選択してください(不鮮明な場合は©unclearを選択)。');
     if (!current.carView) return alert('車体およびブラーの見え方を選択してください。');
     payload.features = [...current.features];
     payload.carView = current.carView;

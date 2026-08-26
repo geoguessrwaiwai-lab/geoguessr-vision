@@ -37,15 +37,16 @@ function migrateLabel(panoId, oldLabel) {
   if (gen === "Gen3" || gen === "Gen4") {
     const allowedFeatures = gen === "Gen3"
       ? new Set(["stubby antenna", "long antenna", "short antenna"])
-      : new Set(["smallcam"]);
+      : new Set(["Smallcam"]);
+    const normalizedOldFeatures = (oldLabel.features ?? []).map((f) => (f === "smallcam" ? "Smallcam" : f));
     migrated.features = wasSmallcam
-      ? ["smallcam"]
-      : [...new Set(oldLabel.features ?? [])].filter((feature) => allowedFeatures.has(feature));
+      ? ["Smallcam"]
+      : [...new Set(normalizedOldFeatures)].filter((feature) => allowedFeatures.has(feature));
     migrated.carView = wasSmallcam ? "both" : oldLabel.carView;
     const omitColor = wasSmallcam || migrated.carView === "neither";
     migrated.color = omitColor ? null : (oldLabel.color ?? null);
     migrated.colorCustom = omitColor ? "" : (oldLabel.colorCustom ?? "");
-    if (Number.isInteger(oldLabel.copyrightYear) && oldLabel.copyrightYear >= 2009) {
+    if (oldLabel.copyrightYear === "unclear" || (Number.isInteger(oldLabel.copyrightYear) && oldLabel.copyrightYear >= 2009)) {
       migrated.copyrightYear = oldLabel.copyrightYear;
     }
   }
