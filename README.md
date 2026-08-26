@@ -12,15 +12,18 @@ npm install
 
 ## タグ付けの方針
 
-`extra.tags`に付けるタグは、地点のカメラ世代に応じて、以下の5種類だけです。
+`extra.tags`に付けるタグは、地点のカメラ世代に応じて、以下の6種類だけです。
 
 | #   | 付与する条件                           | タグの意味          | タグの名称例                                          |
 | --- | -------------------------------------- | ------------------- | ----------------------------------------------------- |
 | 1   | 常に                                   | カメラ世代          | `Gen1`, `Gen2`, `Gen3`, `Gen4`, `Smallcam`, `Shitcam` |
-| 2   | Gen4 or Smallcam                       | 透かしの著作権年    | `©2023`, `©unclear`                                   |
-| 3   | Gen4                                   | 車体色              | `Blue`, `Black`                                       |
-| 4   | Gen4（著作権年が判明した地点だけ）     | 車体色+著作権年     | `Blue 2023`                                           |
-| 5   | Smallcam（著作権年が判明した地点だけ） | `Smallcam`+著作権年 | `Smallcam 2026`                                       |
+| 2   | 常に                                   | 撮影月              | `January`, ..., `December`                            |
+| 3   | Gen4 or Smallcam                       | 透かしの著作権年    | `©2023`, `©unclear`                                   |
+| 4   | Gen4                                   | 車体色              | `Blue`, `Black`                                       |
+| 5   | Gen4（著作権年が判明した地点だけ）     | 車体色+著作権年     | `Blue 2023`                                           |
+| 6   | Smallcam（著作権年が判明した地点だけ） | `Smallcam`+著作権年 | `Smallcam 2026`                                       |
+
+撮影月はGoogleメタデータの撮影日から機械的に取得できるため(`tag-month.ts`参照)、世代を問わず全地点で自動タグ付けします。
 
 補足:
 
@@ -81,7 +84,8 @@ npx tsx capture-locations.ts step0.json ./renders --only-untagged
 #   上記「タグ付けの方針」に沿って世代・車体色のtags.jsonを作らせる
 npx tsx apply-tags.ts step0.json tags.json step1.json
 
-npx tsx tag-watermark-year.ts step1.json output.json --only-untagged
+npx tsx tag-watermark-year.ts step1.json step2.json --only-untagged
+npx tsx tag-month.ts step2.json output.json --only-untagged
 ```
 
 `extra.tags`に重複なくマージされます(panoIdの突合チェック付き)。詳細は各スクリプトの冒頭コメント参照。
