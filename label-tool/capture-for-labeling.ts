@@ -11,11 +11,7 @@ import type { LabelItem, LabelsFile } from "../shared/types.ts";
 //
 // 各候補 { panoId, headingDeg, date, lat, lon, sourceFile } について、
 // outDir/images/<panoId>/ にレンダリングする: front.jpg/back.jpg(想定yaw 0°/180°での
-// 透視投影クロップ — PRIMARY)とwatermark.jpg(著作権年のクロップ)。ground.jpgはこの
-// ラベリング出力からは外している — 実運用ではfront/backが既に見せている以上にはっきりと
-// 車を映すことは稀で、ラベリングUIに含める価値が薄いと判断した(render-pano.tsの
-// renderLocationBundleは他の消費者、例えばcapture-locations.tsのClaudeタグ付けフロー
-// 向けには引き続きground.jpgを生成する)。
+// 透視投影クロップ)とwatermark.jpg(著作権年のクロップ)。
 //
 // front/backは想定yaw=0/180(Gen3代替オフセット付き)を使い、headingDegは使わない —
 // 理由はrender-pano.tsのrenderCarViews参照。headingDegは記述的なメタデータ(yaw=0が
@@ -23,13 +19,6 @@ import type { LabelItem, LabelsFile } from "../shared/types.ts";
 // 使うと前方から二重に回転してしまう。それでも各アイテムにheadingDegを記録している
 // のは、ラベリングUIに埋め込まれたStreet Viewのiframeがそれを必要とするため
 // (Google自身の`heading` URLパラメータは、こちらのyawとは異なる真のコンパス方位)。
-//
-// 全周360°の帯だけ(front/backなし)でyawの推測を一切不要にする案を最初に試したが、
-// 2つの問題が出た: equirectangularの歪みが車を読み取りづらい曲がったスジに変えてしまう
-// こと、そして古い/低品質なパノラマは最も深い鉛直下方に画像データが実際に欠けている
-// (バグではなく、Googleが単に撮影していないだけ)ことがあり、ちょうど車が写るはずの
-// 場所に黒い欠落として現れること。front/backの方がずっと読み取りやすいため、これらを
-// primaryとしている。
 //
 // renderLocationBundleは各パノラマのタイルを1回(並列で)stitchし、そこから全ての
 // クロップを導出する。候補も(デフォルト8の)同時実行数の上限付きで処理する — 大きな

@@ -62,7 +62,6 @@ export interface ManifestEntry {
   panoId: string;
   frontFile: string;
   backFile: string;
-  groundFile: string;
   watermarkFile: string;
   panoDate: string | null;
   resolutionHeight: number | null;

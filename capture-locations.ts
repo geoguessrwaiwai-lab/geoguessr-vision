@@ -10,11 +10,10 @@ import type { CustomCoordinatesFile, ManifestEntry } from "./shared/types.ts";
 //   npx tsx capture-locations.ts <input.json> <outDir> [--only-untagged] [--limit=N] [--concurrency=N]
 //
 // GeoGuessrのcustomCoordinates JSONの各地点について、以下をレンダリングする: yaw 0°/180°
-// (パノラマ自身の前方/後方方向)での透視投影クロップ(front/back。通常は車が認識しやすい
-// 自然な形で写る、レビューのPRIMARY画像)、front/backのどちらにも車が写らない稀なケースの
-// フォールバックとなる地面/鉛直下方帯(ground)、タイルに焼き込まれた「© YYYY Google」透かし
-// のクロップ(watermark)。各地点ごとにJPEGと、それらを記述するmanifest.jsonを書き出し、
-// 人間(またはClaude)がレビューしてapply-tags.tsでタグ付けできるようにする。
+// (パノラマ自身の前方/後方方向)での透視投影クロップ(front/back。車が認識しやすい自然な
+// 形で写る)、タイルに焼き込まれた「© YYYY Google」透かしのクロップ(watermark)。各地点
+// ごとにJPEGと、それらを記述するmanifest.jsonを書き出し、人間(またはClaude)がレビュー
+// してapply-tags.tsでタグ付けできるようにする。
 //
 // 重要: front/backは意図的にpano-meta.tsの`headingDeg`をyawとして使っていない。
 // headingDegは記述的なメタデータ(yaw=0が既にどのコンパス方位を向いているかを教えるだけ)
@@ -26,13 +25,6 @@ import type { CustomCoordinatesFile, ManifestEntry } from "./shared/types.ts";
 // 反映しているだけで、より後の年になりうるので、両者が一致すると仮定しないこと。
 //
 // Google APIキーは不要 — 画像タイルはStreet View自身のタイルCDNから取得する。
-//
-// 全周360°の鉛直下方帯だけ(front/backなし)でyawの推測を一切不要にする案を最初に試したが、
-// 実運用で2つの問題が出た: equirectangularの歪みが車を読み取りづらい曲がったスジに
-// 変えてしまうこと、そして古い/低品質なパノラマは最も深い鉛直下方に画像データが実際に
-// 欠けている(バグではなく、Googleが単に撮影していないだけ)ことがあり、ちょうど車が
-// 写るはずの場所に黒い欠落として現れること。front/backの透視投影クロップの方がずっと
-// 読み取りやすいため、これらをprimaryとし、帯はフォールバック参照としてのみ残している。
 //
 // パフォーマンス: renderLocationBundleは各パノラマのタイルをちょうど1回(並列で)stitchし、
 // そこから全てのクロップを導出する — クロップごとに毎回equirectを取り直すことはしない。
@@ -72,19 +64,17 @@ async function main() {
     }
     try {
       const knownResolutionHeight = c.resolutionHeight ?? c.extra?.resolutionHeight;
-      const { front, back, ground, watermark, resolutionHeight, resolutionClass } =
+      const { front, back, watermark, resolutionHeight, resolutionClass } =
         await renderLocationBundle(panoId, {
           zoom: 3,
           resolutionHeight: knownResolutionHeight,
         });
       const frontFile = path.join(outDir, `${index}-${panoId}-front.jpg`);
       const backFile = path.join(outDir, `${index}-${panoId}-back.jpg`);
-      const groundFile = path.join(outDir, `${index}-${panoId}-ground.jpg`);
       const watermarkFile = path.join(outDir, `${index}-${panoId}-watermark.jpg`);
       await Promise.all([
         front.toFile(frontFile),
         back.toFile(backFile),
-        ground.toFile(groundFile),
         watermark.toFile(watermarkFile),
       ]);
       console.log(`[${index}] saved ${frontFile} (existing tags: ${JSON.stringify(c.extra?.tags ?? [])})`);
@@ -93,7 +83,6 @@ async function main() {
         panoId,
         frontFile,
         backFile,
-        groundFile,
         watermarkFile,
         panoDate: c.extra?.panoDate ?? null,
         resolutionHeight,
@@ -110,7 +99,7 @@ async function main() {
   fs.writeFileSync(path.join(outDir, "manifest.json"), JSON.stringify(manifest, null, 2));
   const elapsed = ((Date.now() - started) / 1000).toFixed(1);
   console.log(
-    `\nWrote ${manifest.length} location(s) (front+back+ground+watermark renders) + manifest.json to ${outDir} in ${elapsed}s`,
+    `\nWrote ${manifest.length} location(s) (front+back+watermark renders) + manifest.json to ${outDir} in ${elapsed}s`,
   );
 }
 

@@ -317,55 +317,6 @@ export async function renderViews(
   return out;
 }
 
-// reproject()の中心光線の計算と整合させる必要がある: pitch pに対して(負の値は下向き)、
-// サンプリングされる緯度は+pではなく-pになる(pitchの回転で符号が反転するため)。
-// pitchから直接行番号を導出する場合も同じ規約を使わないと、帯が上下逆になってしまう。
-function pitchToRow(pitchDeg: number, eqH: number): number {
-  const lat = (-pitchDeg * Math.PI) / 180;
-  return Math.round((lat / Math.PI + 0.5) * eqH);
-}
-
-export interface CropBandOptions {
-  pitchTop?: number;
-  pitchBottom?: number;
-  outW?: number;
-  outH?: number;
-}
-
-// equirectangularの生パノラマから、pitchTopからpitchBottom(度単位)の範囲を全周360度分
-// まとめて水平な帯として切り出す。renderPanoViewの透視投影とは異なり、heading/pitch/roll
-// を推測する必要が一切ない — Street View撮影車が実際にどこにいるか(その正確なheadingは
-// 世代によって異なり、メタデータから確実に復元できない)に関わらず、全周をカバーする帯の
-// どこかに必ず写っている。equirectangular投影はGoogleによって既に重力方向に水平補正
-// されているため、roll補正も不要。
-function cropBand(
-  equirect: Equirect,
-  { pitchTop = -5, pitchBottom = -90, outW = 1600, outH = 300 }: CropBandOptions = {},
-): Sharp {
-  const { data, width: eqW, height: eqH, channels } = equirect;
-  const rowA = pitchToRow(pitchTop, eqH);
-  const rowB = pitchToRow(pitchBottom, eqH);
-  const top = Math.max(0, Math.min(rowA, rowB));
-  const bottom = Math.min(eqH, Math.max(rowA, rowB));
-  const bandBuf = Buffer.from(
-    data.buffer,
-    data.byteOffset + top * eqW * channels,
-    (bottom - top) * eqW * channels,
-  );
-  return sharp(bandBuf, { raw: { width: eqW, height: bottom - top, channels } })
-    .resize(outW, outH)
-    .jpeg({ quality: 90 });
-}
-
-export interface RenderBandOptions extends CropBandOptions {
-  zoom?: number;
-}
-
-export async function renderBand(panoId: string, opts: RenderBandOptions = {}): Promise<Sharp> {
-  const equirect = await stitchEquirect(panoId, opts.zoom ?? 3);
-  return cropBand(equirect, opts);
-}
-
 // Googleが全パノラマのタイルに焼き込んでいる「© YYYY Google」の透かしを切り出す。
 // この透かしの年は撮影日(panoDate/extra.panoDate)とは別物であり — 画像が最後に
 // (再)処理された年を反映しているだけで、それより後の年になりうる。
@@ -415,25 +366,6 @@ export async function renderWatermarkCrop(
   return cropWatermark(equirect, cropOpts);
 }
 
-export interface RenderOverviewOptions {
-  outW?: number;
-  outH?: number;
-  zoom?: number;
-}
-
-// equirectangularパノラマ全体(全周360度x全垂直範囲)を扱いやすいサムネイルに縮小する —
-// renderBandのクロップと並べて一目で見渡せる概観として使う。
-export async function renderOverview(
-  panoId: string,
-  { outW = 1200, outH = 600, zoom = 3 }: RenderOverviewOptions = {},
-): Promise<Sharp> {
-  const equirect = await stitchEquirect(panoId, zoom);
-  const { data, width: eqW, height: eqH, channels } = equirect;
-  return sharp(data, { raw: { width: eqW, height: eqH, channels } })
-    .resize(outW, outH)
-    .jpeg({ quality: 90 });
-}
-
 export interface LocationBundleOptions {
   zoom?: number;
   pitch?: number;
@@ -444,26 +376,21 @@ export interface LocationBundleOptions {
 export interface LocationBundleResult {
   front: Sharp;
   back: Sharp;
-  ground: Sharp;
-  sky: Sharp;
   watermark: Sharp;
   resolutionHeight: number;
   resolutionClass: string;
 }
 
 // 1回のタイル取得から標準的な一式をレンダリングする — 大量処理での通常の入口。
-// renderCarViews/renderBand/renderWatermarkCropをそれぞれ個別に呼ぶと同じパノラマを
-// 何度もstitchし直すことになるため、それを避ける。
+// renderCarViews/renderWatermarkCropをそれぞれ個別に呼ぶと同じパノラマを何度も
+// stitchし直すことになるため、それを避ける。
 //
 // front/back(yaw 0°/180°での透視投影クロップ — パノラマ自身の前方/後方であり、
-// `headingDeg`ではない。renderCarViews参照)がPRIMARYの画像: 車が実際のStreet View
-// ビューアで見えるのと同じ、通常の認識しやすいボンネット形状として写る。
-//
-// `ground`(全周360度の鉛直下方帯)は、front/backのどちらにも車が写らない稀なケースの
-// FALLBACK参照としてのみ保持している — 以前はこれをprimaryにしていたが、
-// equirectangularの歪みが車を読み取りづらい曲がったスジに変えてしまい、また古い/
-// 低品質なパノラマは最も深い鉛直下方に実際に画像データが欠けている(バグではなく、
-// Googleが単に撮影していないだけ)ことがあり、帯の中に黒い欠落として現れる。
+// `headingDeg`ではない。renderCarViews参照)が唯一の画像: 車が実際のStreet View
+// ビューアで見えるのと同じ、通常の認識しやすいボンネット形状として写る。以前は
+// front/backのどちらにも車が写らない稀なケースのフォールバックとして全周360度の
+// 鉛直下方帯(ground)・空帯(sky)も切り出していたが、いずれのモデルでもfront/backだけで
+// 十分と判明したため削除した。
 export async function renderLocationBundle(
   panoId: string,
   { zoom = 3, pitch = -20, fov = 80, resolutionHeight }: LocationBundleOptions = {},
@@ -477,8 +404,6 @@ export async function renderLocationBundle(
   return {
     front: cropView(equirect, frontYaw, pitch, fov, 900, 700, 0),
     back: cropView(equirect, backYaw, pitch, fov, 900, 700, 0),
-    ground: cropBand(equirect, { pitchTop: -5, pitchBottom: -90, outW: 1800, outH: 340 }),
-    sky: cropBand(equirect, { pitchTop: 60, pitchBottom: 0, outW: 1800, outH: 300 }),
     watermark: cropWatermark(equirect),
     resolutionHeight: resolvedHeight,
     resolutionClass,
