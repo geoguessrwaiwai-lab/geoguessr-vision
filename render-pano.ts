@@ -1,13 +1,8 @@
 import sharp from "sharp";
 import type { Sharp, Channels } from "sharp";
 import { classifyResolutionHeight, getPanoMeta, RESOLUTION_CLASS } from "./pano-meta.ts";
+import { UA } from "./pb-url.ts";
 import { isMainModule } from "./shared/is-main-module.ts";
-
-const UA =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
-// 上のUAはpb-url.tsのUAと役割は同じ(Googleの内部エンドポイントに対してブラウザに
-// 見せかけるため)だが、叩いている先(タイルCDN vs. photometa API)が異なり、それぞれ
-// 個別に動作確認した経緯があるため、意図的に統合せずそのまま維持する。
 
 async function fetchTile(panoId: string, x: number, y: number, zoom: number): Promise<Buffer> {
   const url = `https://streetviewpixels-pa.googleapis.com/v1/tile?cb_client=maps_sv.tactile&panoid=${panoId}&x=${x}&y=${y}&zoom=${zoom}&nbt=1&fir=0`;

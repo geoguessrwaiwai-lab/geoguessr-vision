@@ -62,8 +62,10 @@ export function toProtobufUrl(fields: PbMessage): [number, string] {
   return [childCount, serialized];
 }
 
+// Google内部エンドポイントに対してブラウザに見せかけるためのUA。タイルCDN(render-pano.ts)・
+// photometa API(このモジュール)の両方でこの値を使う。
 export const UA =
-  "Mozilla/5.0 (Windows NT 11.0; Win64; x64; rv:151.0) Gecko/20100101 Firefox/151.0";
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
 
 export async function fetchGoogleJson(url: string): Promise<unknown> {
   const res = await fetch(url, {
