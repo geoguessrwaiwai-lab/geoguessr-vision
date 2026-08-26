@@ -27,38 +27,36 @@ function saveLabels(labels) {
 
 // Values here are the same strings that end up in extra.tags on the final location JSON
 // (see README's tag vocabulary table) — kept identical so a label can be turned into tags by
-// copying fields, not translating them.
-const GENERATIONS = new Set(["Gen1", "Gen2", "Gen3", "Gen4", "Shitcam"]);
+// copying fields, not translating them. Smallcam is a generation in its own right (a sibling
+// of Gen4, not a feature hung off it), since it shares Gen4's ResolutionHeight but is visually
+// distinct and never shows car color.
+const GENERATIONS = new Set(["Gen1", "Gen2", "Gen3", "Gen4", "Smallcam", "Shitcam"]);
 const CAR_VIEWS = new Set(["front", "back", "both", "neither"]);
-const GEN3_FEATURES = new Set(["stubby antenna", "long antenna", "short antenna"]);
-const GEN4_FEATURES = new Set(["Smallcam"]);
+// Only Gen4 needs car color/blur-view labeled — Gen1/Gen2/Gen3/Smallcam/Shitcam are either
+// low-resolution enough that color judgment is unreliable, or (Smallcam) never show the car
+// body at all — the generation tag alone is the useful signal for those (see README).
+const COLOR_GENS = new Set(["Gen4"]);
 
 function validateLabel(entry) {
   if (typeof entry.panoId !== "string" || entry.panoId.length === 0) return "panoId is required";
   if (!GENERATIONS.has(entry.gen)) return "invalid generation";
-  const detailed = entry.gen === "Gen3" || entry.gen === "Gen4";
-  if (!detailed) return null;
 
-  const features = entry.features ?? [];
-  if (!Array.isArray(features) || new Set(features).size !== features.length) return "features must be a unique array";
-  const allowedFeatures = entry.gen === "Gen3" ? GEN3_FEATURES : GEN4_FEATURES;
-  if (features.some((feature) => !allowedFeatures.has(feature))) return `invalid feature for ${entry.gen}`;
-
-  const smallcam = features.includes("Smallcam");
-  if (!CAR_VIEWS.has(entry.carView)) return "invalid car view";
-  if (smallcam && entry.carView !== "both") return "Smallcam must use carView=both";
-  if (!smallcam && entry.carView !== "neither" && !entry.color) return "color is required when the car is visible";
-  if ((smallcam || entry.carView === "neither") && entry.color != null) return "color must be null for smallcam or neither";
-
-  // "unclear" mirrors tag-watermark-year.mjs's "©unclear" fallback — the watermark year is
-  // baked into the render just like copyright year is, and it's just as often illegible by
-  // eye as it is by OCR. Forcing a guessed year here would poison training data with the same
-  // kind of unreliable label the automated OCR path was built to avoid.
+  // Copyright/watermark-year extraction is always attempted regardless of generation (see
+  // README), so every generation collects a ground-truth year label too. "unclear" mirrors
+  // tag-watermark-year.mjs's "©unclear" fallback — the watermark year is just as often
+  // illegible by eye as it is by OCR. Forcing a guessed year here would poison training data
+  // with the same kind of unreliable label the automated OCR path was built to avoid.
   const currentYear = new Date().getFullYear();
   const validYear = Number.isInteger(entry.copyrightYear) && entry.copyrightYear >= 2009 && entry.copyrightYear <= currentYear;
   if (entry.copyrightYear !== "unclear" && !validYear) {
     return `copyrightYear must be "unclear" or an integer from 2009 to ${currentYear}`;
   }
+
+  if (!COLOR_GENS.has(entry.gen)) return null;
+
+  if (!CAR_VIEWS.has(entry.carView)) return "invalid car view";
+  if (entry.carView !== "neither" && !entry.color) return "color is required when the car is visible";
+  if (entry.carView === "neither" && entry.color != null) return "color must be null when carView is neither";
   return null;
 }
 
@@ -68,13 +66,12 @@ function normalizeLabel(entry) {
     gen: entry.gen,
     confidence: entry.confidence ?? "high",
     notes: entry.notes ?? "",
+    copyrightYear: entry.copyrightYear,
   };
-  if (entry.gen === "Gen3" || entry.gen === "Gen4") {
-    normalized.features = entry.features ?? [];
+  if (COLOR_GENS.has(entry.gen)) {
     normalized.carView = entry.carView;
     normalized.color = entry.color ?? null;
     normalized.colorCustom = entry.color == null ? "" : (entry.colorCustom ?? "");
-    normalized.copyrightYear = entry.copyrightYear;
   }
   return normalized;
 }

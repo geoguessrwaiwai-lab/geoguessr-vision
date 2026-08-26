@@ -2,8 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 
 // Migrates the old flat generation/color labels to the conditional schema used by the
-// labeling UI. Reusable information is preserved; fields that cannot be inferred safely
-// (copyrightYear and Gen3 antenna features) are deliberately left unset for re-review.
+// labeling UI. Reusable information is preserved; Smallcam (whether it was the old flat
+// "Small cam" value or a Gen4 label with a "smallcam"/"Smallcam" feature) is normalized to its
+// own top-level generation, since Smallcam is a sibling of Gen4 rather than a feature of it.
+// Gen3's now-removed antenna features are dropped rather than guessed.
 // Rejected panorama IDs are removed from labels, items, candidate pools, and image folders.
 //
 // Usage: node label-tool/migrate-label-format.mjs <dataDir> [candidate.json ...]
@@ -24,9 +26,14 @@ const rejectedIds = new Set(
   Object.entries(labels).filter(([, label]) => label.rejected).map(([panoId]) => panoId),
 );
 
+// Only Gen4 collects car color/carView. Copyright year is collected for every generation.
+// See label-tool/server.mjs.
+const COLOR_GENS = new Set(["Gen4"]);
+
 function migrateLabel(panoId, oldLabel) {
-  const wasSmallcam = oldLabel.gen === "Small cam";
-  const gen = wasSmallcam ? "Gen4" : oldLabel.gen;
+  const oldFeatures = (oldLabel.features ?? []).map((f) => (f === "smallcam" ? "Smallcam" : f));
+  const wasSmallcam = oldLabel.gen === "Small cam" || (oldLabel.gen === "Gen4" && oldFeatures.includes("Smallcam"));
+  const gen = wasSmallcam ? "Smallcam" : oldLabel.gen;
   const migrated = {
     panoId,
     gen,
@@ -34,21 +41,15 @@ function migrateLabel(panoId, oldLabel) {
     notes: oldLabel.notes ?? "",
   };
 
-  if (gen === "Gen3" || gen === "Gen4") {
-    const allowedFeatures = gen === "Gen3"
-      ? new Set(["stubby antenna", "long antenna", "short antenna"])
-      : new Set(["Smallcam"]);
-    const normalizedOldFeatures = (oldLabel.features ?? []).map((f) => (f === "smallcam" ? "Smallcam" : f));
-    migrated.features = wasSmallcam
-      ? ["Smallcam"]
-      : [...new Set(normalizedOldFeatures)].filter((feature) => allowedFeatures.has(feature));
-    migrated.carView = wasSmallcam ? "both" : oldLabel.carView;
-    const omitColor = wasSmallcam || migrated.carView === "neither";
+  if (oldLabel.copyrightYear === "unclear" || (Number.isInteger(oldLabel.copyrightYear) && oldLabel.copyrightYear >= 2009)) {
+    migrated.copyrightYear = oldLabel.copyrightYear;
+  }
+
+  if (COLOR_GENS.has(gen)) {
+    migrated.carView = oldLabel.carView;
+    const omitColor = migrated.carView === "neither" || migrated.carView == null;
     migrated.color = omitColor ? null : (oldLabel.color ?? null);
     migrated.colorCustom = omitColor ? "" : (oldLabel.colorCustom ?? "");
-    if (oldLabel.copyrightYear === "unclear" || (Number.isInteger(oldLabel.copyrightYear) && oldLabel.copyrightYear >= 2009)) {
-      migrated.copyrightYear = oldLabel.copyrightYear;
-    }
   }
 
   if (oldLabel.at) migrated.at = oldLabel.at;

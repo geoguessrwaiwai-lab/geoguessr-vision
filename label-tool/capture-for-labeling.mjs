@@ -40,7 +40,7 @@ const concurrency = concurrencyArg ? parseInt(concurrencyArg.split("=")[1], 10) 
 const append = args.includes("--append");
 const presetGenArg = args.find((a) => a.startsWith("--preset-gen="));
 const presetGen = presetGenArg ? presetGenArg.split("=")[1] : null;
-const validGens = new Set(["Gen1", "Gen2", "Gen3", "Gen4", "Shitcam"]);
+const validGens = new Set(["Gen1", "Gen2", "Gen3", "Gen4", "Smallcam", "Shitcam"]);
 
 if (!candidatesPath || !outDir) {
   console.error("Usage: node capture-for-labeling.mjs <candidates.json> <outDir> [--concurrency=N] [--append] [--preset-gen=Gen3]");

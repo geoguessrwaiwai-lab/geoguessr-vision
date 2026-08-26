@@ -1,8 +1,8 @@
 # GeoGuessr Vision
 
-[Vali](https://github.com/geoguessrwaiwai-lab/Vali)などで生成済みの地点JSON(`extra.tags`を持つ形式)に対して、Street Viewの見え方から**カメラ世代・特徴・車体色**を判定し、タグ付けしたJSONを保存するためのコンピュータビジョン・機械学習ツールです。
+[Vali](https://github.com/geoguessrwaiwai-lab/Vali)などで生成済みの地点JSON(`extra.tags`を持つ形式)に対して、Street Viewの見え方から**カメラ世代・著作権年・車体色**を判定し、タグ付けしたJSONを保存するためのコンピュータビジョン・機械学習ツールです。
 
-GoogleのAPIキーは一切不要です(Street View自体の内部エンドポイントを直接叩いています)。
+GoogleのAPIキーは一切不要で、ノーコストで実行できます。
 
 ## セットアップ
 
@@ -23,19 +23,12 @@ npm install
 | `capture-locations.mjs`  | 地点JSON一括処理。各地点のground/sky帯+透かしクロップをレンダリング + manifest出力        |
 | `apply-tags.mjs`         | タグ付け結果を`extra.tags`にマージして保存                                                |
 | `tag-copyright.mjs`      | 著作権(撮影主体)を自動判定してタグ付け(画像判定不要、下記参照)                            |
-| `tag-watermark-year.mjs` | 透かしの年号をOCRで自動タグ付け(読み取れない場合は`Watermark 不鮮明`、下記参照)          |
+| `tag-watermark-year.mjs` | 透かしの年号をOCRで自動タグ付け(Gen4のみ、読み取れない場合は`©unclear`、下記参照)         |
 | `gather-candidates.mjs`  | 学習データ収集用に、既存の`*-locations.json`や海外の代表地点からpanoIdの候補プールを作成  |
-| `label-tool/`            | 世代・Smallcam/アンテナ特徴・車体色・著作権年をラベリングするローカルWebツール             |
+| `label-tool/`            | 世代・車体色・著作権年をラベリングするローカルWebツール                                  |
 | `models/`(gitignore対象) | 学習済みモデルの出力先                                                                    |
 
 ## レンダリング方式: front/back(透視図)がメイン、360°帯は保険
-
-**経緯(行きつ戻りつしたので記録):**
-
-1. 最初は、パノラマの「真のカメラ進行方向(true heading)」を推定し、そこに向けてpitch/rollを合わせた1枚のクロップ画像を作る方式でした。
-2. しかしGen3/Gen4（smallcamを含む）は車体の前後どちらが写るかが世代・特徴で異なり、道路のカント等で「狙った角度」がズレて車がフレーム外になることも多かったため、**特定の方角を推測するのをやめ、正距円筒(equirectangular)画像から仰角(pitch)範囲を360°全周ぶん帯状に切り出す**方式(`renderBand()`)に変更しました。
-3. ところがこの帯方式には別の問題がありました: (a) equirect投影の歪みで車が曲がった筋状パターンになり視覚的に解釈しづらい、(b) 古い/低品質なパノラマは**真下(nadir)付近のデータをGoogleが元々持っておらず**(バグではなく、単に未撮影)、車が写るはずの位置が黒塗りになることがある。
-4. heading/roll補正が正しくできるようになった今、front/back(`renderCarViews`と同等の透視図)の方が実際のGoogle Mapビューアーで見るのと同じ自然な形で車が写るため、**front/backをメインに戻し、360°帯(`ground`)は前後どちらにも車が写らない場合の保険**として残す構成にしました。
 
 - `front`/`back`(基準は真の進行方向とその180°反対、pitch -20°): 車のボンネットが自然な形で写る、メインで確認する画像。Googleメタデータの`ResolutionHeight`が8192ではない画像では、タイル境界を避けるためfrontを-20°、backを-60°ずらす。Gen3/Gen4側の切り替えに画像下部の黒領域は使用しない
 - `ground`帯(pitch -5°〜-90°、フォールバック): front/backどちらにも車が見当たらない場合の保険。車が写る可能性のある領域をヘディング問わず丸ごと含む
@@ -43,75 +36,61 @@ npm install
 
 内部的には`renderLocationBundle()`が1回のタイル取得からfront/back/ground/watermarkを全部切り出します。
 
-`ResolutionHeight`による世代区分は次の共通定義を使用します。定義外の値は`Unknown`とし、推測では分類しません。
+`ResolutionHeight`による世代区分は次の共通定義を使用します(`pano-meta.mjs`の`classifyResolutionHeight`)。定義外の値は`Unknown`とし、推測では分類しません。
 
-| ResolutionHeight | 区分 |
-| --- | --- |
-| `1664`以下 | `Gen1` |
-| `8192` | `Gen4` |
-| `6656` | `Gen2 / Gen3 / badcam`（解像度だけでは区別しない） |
+| ResolutionHeight | 区分                                                       |
+| ---------------- | ---------------------------------------------------------- |
+| `1664`以下       | `Gen1`                                                     |
+| `8192`           | `Gen4` / `Smallcam`(同じ解像度で、両者の区別は画像を見て行う) |
+| `6656`           | `Gen2 / Gen3 / badcam`(これらは解像度だけでは区別できない) |
 
-## パフォーマンス: 大量地点を処理する場合
+`6656`の3パターン(Gen2 / Gen3 / badcam)をさらに区別する方法は今後実装予定で、現状は未実装です(保留)。
 
-地点数が多くなると律速するのはレンダリング方式そのものではなく、タイル取得のI/Oでした。以下2点を修正済みです:
+## タグ付けの方針
 
-1. **タイルの並列取得**: `stitchEquirect`は以前1枚ずつ`await`で逐次取得していました(zoom=3で32枚 = 32回の直列往復)。現在は`Promise.all`で並列取得します。
-2. **1地点1スティッチ**: `ground`/`sky`/`watermark`を別々に取得すると同じパノラマを2〜3回re-stitchしてしまうため、`renderLocationBundle()`で1回のタイル取得から3つとも切り出すようにしました。
-3. **地点間の並列処理**: `capture-locations.mjs` / `label-tool/capture-for-labeling.mjs` はどちらも`concurrency.mjs`の`mapConcurrent`で地点を並列処理します(デフォルト8、`--concurrency=N`で調整可)。
+`extra.tags`に付けるタグは、地点のカメラ世代に応じて次の5種類だけです。`apply-tags.mjs`(手動/Claudeレビュー)・`tag-copyright.mjs`・`tag-watermark-year.mjs`・`label-tool`は、すべて同じ文字列語彙を使います(学習ラベルの各フィールド`gen`/`color`/`copyrightYear`は、そのままタグ文字列として書き出せる形で保存されています)。
 
-効果(1地点あたり): 6.27秒 → 0.47秒(**約13倍**)。1000地点なら単純計算で約1.7時間 → 数分程度に短縮される見込みです。Google側の(非公式・無認証)タイルエンドポイントに対する配慮として、並列数はデフォルト8に抑えています。大量処理時にレート制限等が起きた場合は`--concurrency`を下げてください。
+`Smallcam`は`Gen4`と対等な独立した世代として扱います(`Gen4`の特徴・派生ではありません)。解像度は`Gen4`と同じ8192pxですが、車体・アンテナ等の見た目が異なる別カテゴリとして画像から判定します。
+
+| #   | 条件                                 | タグ                   | 例                                                |
+| --- | ------------------------------------ | ---------------------- | ------------------------------------------------- |
+| 1   | 常に                                 | カメラ世代(単体)       | `Gen1`, `Gen4`, `Smallcam`, `Shitcam`, `Gen2 / Gen3 / badcam` |
+| 2   | Gen4またはSmallcamの地点だけ         | 透かしの著作権年(単体) | `©2023`, `©unclear`                               |
+| 3   | Gen4の地点だけ(Smallcamを除く)       | 車体色(単体)           | `Blue`, `Black`                                   |
+| 4   | Gen4で著作権年が判明した地点だけ     | 車体色+著作権年        | `Blue 2023`                                       |
+| 5   | Smallcamで著作権年が判明した地点だけ | `Smallcam`+著作権年    | `Smallcam 2026`                                   |
+
+補足:
+
+- **世代の判別だけで十分な地点(Gen1/Gen2/Gen3/badcam/Smallcam/Shitcam)は車体色を判定しない**。Gen1/Gen2/Gen3/badcam/Shitcamは画質が不鮮明で車体色の学習精度が低く判定難度が高いため、Smallcamはそもそも車体がほとんど写らないため。いずれも世代タグ1つだけを付ける(Gen4だけが例外的に車体色を持つ)
+- 透かしの著作権年は**全ての世代で常に抽出を試みる**(`tag-watermark-year.mjs`のOCRは世代を問わず毎回実行される)。ただし単体タグとして`extra.tags`に書き込むのはGen4/Smallcamの地点のみ。理由は精度: 透かしの位置は世代によって差があり(古い撮影は上空付近に1箇所、新しい撮影は路面付近に複数箇所など)、Gen4/Smallcam以外への対応(クロップ位置の世代別最適化)は今後の改善候補として保留中
+- 透かしの年号が読み取れない(目視でも不鮮明)場合は`©unclear`とし、タグ自体を省略しない
+- 「車体色/Smallcam + 著作権年」の組み合わせタグ(表4・5)は、著作権年が判明している場合のみ付ける。`©unclear`の場合は組み合わせタグを作らず、単体の色/Smallcamタグと`©unclear`タグだけを付ける
+- 上記とは別に、**著作権の団体名**(例: `Google`, `Instituto Geografico Nacional`)は世代に関係なく全地点に自動で付く(`tag-copyright.mjs`、下記参照)。これはGoogleのメタデータをそのまま読むだけで画像判定を伴わないため、世代による精度差がない
 
 ## 使い方1: 車の色などを判定してJSONにタグ付けする(半自動)
 
+`tag-watermark-year.mjs`は地点の世代タグ(`Gen4`/`Smallcam`)がすでに付いているかどうかで著作権年タグを書き込むか判断するため、**世代タグを先に確定させてから**実行する必要があります。
+
 ```bash
 node capture-locations.mjs input.json ./renders --only-untagged
-# → renders/*-front.jpg, *-back.jpg, *-ground.jpg(保険), *-watermark.jpg をClaude Codeなどに読ませてtags.jsonを作らせる
-node apply-tags.mjs input.json tags.json output.json
+# → renders/*-front.jpg, *-back.jpg, *-ground.jpg(保険), *-watermark.jpg をClaude Codeなどに読ませ、
+#   上記「タグ付けの方針」に沿って世代・車体色のtags.jsonを作らせる
+node apply-tags.mjs input.json tags.json step1.json
+
+node tag-copyright.mjs step1.json step2.json --only-untagged
+node tag-watermark-year.mjs step2.json output.json --only-untagged
 ```
 
 `extra.tags`に重複なくマージされます(panoIdの突合チェック付き)。詳細は各スクリプトの冒頭コメント参照。
 
-## 著作権・年号まわりの3つの似て非なる値
+`tag-copyright.mjs`が付ける著作権の団体名タグ(例: `Google`)は、Googleのメタデータをそのまま読むだけで完全自動・100%正確です。これは撮影日(`extra.panoDate`、GeoGuessrのエクスポートに既にある値)とも、同じ`copyright`フィールドに含まれる年部分(⚠️常にリクエストした「今日の年」を返すだけでパノラマ固有の情報ではなく、使わない)とも別物なので注意してください。
 
-紛らわしいので整理しておきます。
-
-| 値                                | 取得元                                                              | 意味                                                                                       | 自動/目視                     |
-| --------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------- |
-| `panoDate`(`extra.panoDate`)      | GeoGuessrのエクスポート                                             | **撮影日**                                                                                 | 既にJSONにある                |
-| 著作権の**団体名**(例: `Google`)  | `pano-meta.mjs`の`copyright`フィールド                              | 撮影主体(公式Google車 or 第三者/行政機関)                                                  | `tag-copyright.mjs`で完全自動 |
-| 著作権の**年号**(例: `2026`)      | 同じ`copyright`フィールドの年部分                                   | ⚠️**常にリクエストした「今日の年」を返すだけで、パノラマ固有の情報ではない**。使わないこと | —                             |
-| 透かしの年号(例: `© 2025 Google`) | 画像タイルに焼き込まれた透かし文字(`renderWatermarkCrop`で切り出し) | そのパノラマが最後に(再)処理された年。**撮影年度とは別物**で、後年に再処理されると変わる   | 目視(下記)                    |
-
-`tag-copyright.mjs`は団体名だけを`extra.tags`に追加し、意味のない年号部分は最初から捨てているので、その点は元々問題ありません。
-
-透かしの年号は、[igs](https://github.com/iggedi-ig-ig)氏の[copyright-labeller](https://github.com/iggedi-ig-ig/copyright-labeller)(著作権OCRツール、~2/3のカバー率・~95%の正解率とのこと)と同じ技術方針(OCRの認識文字種を透かしが取りうる文字だけに絞り、1回のOCR結果を鵜呑みにせず複数の検出が一致した場合だけ採用する)を採用した`tag-watermark-year.mjs`で自動タグ付けできます。
-
-```bash
-node tag-watermark-year.mjs input.json output.json --only-untagged
-```
+透かしの著作権年は、[igs](https://github.com/iggedi-ig-ig)氏の[copyright-labeller](https://github.com/iggedi-ig-ig/copyright-labeller)(著作権OCRツール、~2/3のカバー率・~95%の正解率とのこと)と同じ技術方針(OCRの認識文字種を透かしが取りうる文字だけに絞り、1回のOCR結果を鵜呑みにせず複数の検出が一致した場合だけ採用する)を採用した`tag-watermark-year.mjs`で自動タグ付けします。
 
 - 認識文字種を`0-9`・`Google`・スペースのみに制限(小さく低コントラストな文字に対する誤認識の大半はここで削れる)
 - 同じ切り出し画像に対しTesseractのページ分割モードを変えて2回OCRし、両方が同じ年で一致した場合のみ採用
-- 一致しなかった/年号が全く読めなかった場合は、黙ってスキップせず`©unclear`タグを付けて目視レビューに回す
-
-過去にtesseract/EasyOCRで断念したのは透かし単体のクロップに対する素のOCRで、今回は文字種制限とダブルチェックを組み合わせることである程度読み取れるようになりましたが、透かしの位置は世代によって差があり(古い撮影は上空付近に1箇所、Smallcam 2025など新しい撮影は路面付近に複数箇所繰り返し出現するなど)、`renderWatermarkCrop`の固定座標クロップが外れているパノラマは引き続き`不鮮明`になります。カバー率をさらに上げたい場合はクロップ位置の世代別対応が次の改善候補です。
-
-透かしは小さく低コントラストなため、tesseract・EasyOCRいずれも試しましたが実用的な精度で読み取れませんでした。ただし**equirect画像上の固定ピクセル位置に焼き込まれている**ため(シーン内容に依存しない)、`renderWatermarkCrop()`で同じ座標を切り出すだけで、どのパノラマでも人が読める程度には鮮明な画像が安定して得られます。
-
-## `extra.tags`の語彙統一
-
-`apply-tags.mjs`(手動/Claudeレビュー)・`tag-copyright.mjs`・`tag-watermark-year.mjs`、そして`label-tool`で集める学習ラベルは、すべて同じ文字列語彙を使います。学習ラベルの各フィールド(`gen`/`features`/`color`/`copyrightYear`)は、そのままこのタグ文字列として書き出せる形で保存しています。
-
-| 種別                   | 形式               | 例                                |
-| ---------------------- | ------------------ | --------------------------------- |
-| 世代                   | `GenN` / `Shitcam` | `Gen3`, `Gen4`, `Shitcam`         |
-| 特徴                   | 単語               | `Smallcam`                        |
-| 車体色                 | 単語               | `Red`, `Black`                    |
-| 車体色/特徴 + 透かし年 | `<色/特徴> <年>`   | `Blue 2026`, `Red 2022`, `Smallcam 2025` |
-| 透かしの年号           | `©YYYY` / `©unclear` | `©2022`, `©unclear`             |
-
-- 透かしの年号が読み取れない(目視でも不鮮明)場合は`©unclear`とし、タグ自体を省略しない。`tag-watermark-year.mjs`のOCRも`label-tool`の目視レビューも同じ表記を使う
-- 「車体色/特徴 + 透かし年」の組み合わせタグは、透かしの年号が判明している場合のみ付ける(`©unclear`の場合は組み合わせタグを作らず、単体の色/特徴タグと`©unclear`タグだけを付ける)
+- 一致しなかった/年号が全く読めなかった場合は、黙ってスキップせず`©unclear`タグを付けて目視レビューに回す(ただしタグを書き込むのはGen4/Smallcamの地点のみ。上記「タグ付けの方針」参照)
 
 ## 使い方2: Gen1-4 / 色の学習データを集める
 
@@ -136,16 +115,14 @@ node capture-for-labeling.mjs gen3-country-candidates.json ./data --append --pre
 
 ラベリングツールは各地点について **Front/Back(真の進行方向とその180°反対、メイン)**、**Ground(360°帯、フォールバック)**、著作権年を読むための**Watermark**を表示します。
 
-ラベル構造:
+ラベル構造(「タグ付けの方針」と対応、`label-tool/server.mjs`の`COLOR_GENS`参照):
 
-- 世代は`Gen1` / `Gen2` / `Gen3` / `Gen4` / `Shitcam`。Gen1・Gen2・Shitcamは世代だけで完了
-- Gen4の任意特徴は`smallcam`。選択時は車体・ブラーの見え方が自動的に`both`となり、色は記録しない
-- Gen3の任意特徴は`stubby antenna` / `long antenna` / `short antenna`
-- Gen3/Gen4のみ車体・ブラーの見え方を`front` / `back` / `both` / `neither`から選択
-- `neither`または`smallcam`の場合は色を記録しない。それ以外は従来どおり車体色を選択
-- Gen3/Gen4のみ、透かしの著作権年を2009年から現在年までの整数で選択
+- 世代は`Gen1` / `Gen2` / `Gen3` / `Gen4` / `Smallcam` / `Shitcam`。`Smallcam`は`Gen4`と対等な独立した世代で、車体を判定するための特徴フラグではない
+- 透かしの著作権年は**全世代で必須**(2009年から現在年までの整数、または`©unclear`)。抽出精度の改善は世代によらず常に試みる方針のため、Gen4/Smallcam以外でもラベルを集める
+- 車体・ブラーの見え方(`front` / `back` / `both` / `neither`)と車体色は**Gen4のみ**で収集する。Gen1/Gen2/Gen3/Smallcam/Shitcamは世代が決まった時点で完了
+- Gen4で`neither`の場合は色を記録しない。それ以外は車体色を選択
 
-キーボード操作: `1-5`=世代、`F/B/O/N`=車体・ブラーの見え方、`Enter`=保存して次へ、`S`=スキップ、`X`=棄却、`←→`=移動。
+キーボード操作: `1-6`=世代、`F/B/O/N`=車体・ブラーの見え方(Gen4のみ)、`Enter`=保存して次へ、`S`=スキップ、`X`=棄却、`←→`=移動。
 
 旧形式のラベルを移行し、棄却済み地点をデータセットから取り除く場合:
 
@@ -157,11 +134,11 @@ node label-tool/migrate-label-format.mjs label-tool/data label-tool/candidates.j
 
 ## 学習方針
 
-front単体・back単体では判断がつきにくいため、**FrontとBackを1組の入力として扱う2分岐モデル**で学習する方針です。Smallcamは独立世代ではなくGen4の特徴として扱います。
+front単体・back単体では判断がつきにくいため、**FrontとBackを1組の入力として扱う2分岐モデル**で学習する方針です。Smallcamは`Gen4`と対等な独立した世代クラスとして扱います。
 
 ```
 front.jpg ──▶ [CNN backbone] ──▶ 特徴ベクトルA ─┐
-               (重み共有)                        ├─▶ 結合 ──▶ MLP ──▶ 世代・特徴・色
+               (重み共有)                        ├─▶ 結合 ──▶ MLP ──▶ 世代・色
 back.jpg  ──▶ [CNN backbone] ──▶ 特徴ベクトルB ─┘
 ```
 

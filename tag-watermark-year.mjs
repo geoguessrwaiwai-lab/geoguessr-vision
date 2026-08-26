@@ -6,6 +6,9 @@ import { renderWatermarkCrop } from "./render-pano.mjs";
 // Usage:
 //   node tag-watermark-year.mjs <input.json> <output.json> [--only-untagged] [--concurrency=N]
 //
+// Only writes a tag for locations already tagged Gen4 (or Smallcam) — see the note below on
+// why the OCR itself still runs for every generation.
+//
 // Automates reading the "© YYYY Google" watermark year baked into the panorama tiles — the
 // thing render-pano.mjs's renderWatermarkCrop says was left for manual review because a plain
 // OCR pass (tesseract/EasyOCR tried previously) wasn't accurate enough. This isn't the same
@@ -40,6 +43,15 @@ import { renderWatermarkCrop } from "./render-pano.mjs";
 // lower-resolution/older panoramas) — that case also correctly falls into UNCLEAR_TAG, since
 // neither pass finds a plausible year, but no OCR strategy can read text that wasn't cropped
 // in.
+//
+// The OCR pass always runs regardless of camera generation, but the resulting tag is only
+// written to extra.tags for Gen4 or its sibling generation Smallcam — see the README's tag
+// vocabulary table. Older generations' watermark position/legibility differs enough that this
+// same crop-and-OCR approach isn't trustworthy there yet (a per-generation crop strategy is a
+// noted future improvement, not implemented here); running the OCR unconditionally regardless
+// keeps that door open without polluting non-Gen4 locations with unreliable tags today. This
+// requires the generation tag (from apply-tags.mjs) to already be present in extra.tags —
+// run this after tagging generation, not before.
 
 const LAUNCH_YEAR = 2007; // Street View's public launch
 const CURRENT_YEAR = new Date().getFullYear();
@@ -112,6 +124,11 @@ async function readWatermarkYear(worker, panoId) {
 
 const data = JSON.parse(fs.readFileSync(inputPath, "utf8"));
 
+function isGen4(c) {
+  const tags = c.extra?.tags ?? [];
+  return tags.some((t) => t.toLowerCase() === "gen4" || t.toLowerCase() === "smallcam");
+}
+
 let coords = data.customCoordinates.map((c, index) => ({ c, index }));
 if (onlyUntagged) {
   coords = coords.filter(({ c }) => {
@@ -146,6 +163,10 @@ async function lane(worker) {
     try {
       const result = await readWatermarkYear(worker, panoId);
       const tag = result.unclear ? UNCLEAR_TAG : `©${result.year}`;
+      if (!isGen4(c)) {
+        console.log(`[${index}] ${panoId} -> "${tag}" (not written: generation isn't Gen4)`);
+        continue;
+      }
       c.extra ??= {};
       c.extra.tags ??= [];
       const existingLower = new Set(c.extra.tags.map((t) => t.toLowerCase()));

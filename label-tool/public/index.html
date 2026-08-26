@@ -31,9 +31,6 @@
   button.opt:hover { background: #333846; }
   button.opt.selected { background: var(--accent); border-color: var(--accent); color: white; }
   button.opt kbd { opacity: 0.6; margin-left: 4px; font-size: 11px; }
-  .checkbox-option input { position: absolute; opacity: 0; pointer-events: none; }
-  .checkbox-option span { display: block; background: #2a2e37; border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; }
-  .checkbox-option input:checked + span { background: var(--accent); border-color: var(--accent); color: white; }
   .year-groups { display: flex; flex-direction: column; gap: 6px; }
   .year-group { display: flex; gap: 6px; flex-wrap: wrap; }
   .year-option input { position: absolute; opacity: 0; pointer-events: none; }
@@ -64,12 +61,11 @@ let items = [];
 let labels = {};
 let idx = 0;
 
-const GENS = ['Gen1', 'Gen2', 'Gen3', 'Gen4', 'Shitcam'];
-const DETAILED_GENS = new Set(['Gen3', 'Gen4']);
-const FEATURES = {
-  Gen3: ['stubby antenna', 'long antenna', 'short antenna'],
-  Gen4: ['Smallcam'],
-};
+// Smallcam is a generation in its own right (a sibling of Gen4, not a feature hung off it) —
+// see README. Only Gen4 needs car color/blur-view labeled. Copyright year is collected for
+// every generation since extraction is always attempted regardless of gen.
+const GENS = ['Gen1', 'Gen2', 'Gen3', 'Gen4', 'Smallcam', 'Shitcam'];
+const COLOR_GENS = new Set(['Gen4']);
 const VIEWS = [['front', 'Front (F)'], ['back', 'Back (B)'], ['both', 'Both (O)'], ['neither', 'Neither (N)']];
 const COLORS = ['White', 'Blue', 'Blue Striped', 'Silver', 'Grey', 'Black', 'Black Striped', 'Red', 'Navy', 'Other'];
 const COPYRIGHT_YEARS = Array.from({ length: new Date().getFullYear() - 2008 }, (_, i) => 2009 + i);
@@ -77,10 +73,10 @@ const COPYRIGHT_YEARS = Array.from({ length: new Date().getFullYear() - 2008 }, 
 function normalizeLegacyLabel(entry) {
   if (!entry) return entry;
   if (entry.gen === 'Small cam') {
-    entry = { ...entry, gen: 'Gen4', features: ['Smallcam'], carView: 'both', color: null, colorCustom: '' };
+    entry = { ...entry, gen: 'Smallcam', carView: null, color: null, colorCustom: '' };
   }
-  if (Array.isArray(entry.features) && entry.features.includes('smallcam')) {
-    entry = { ...entry, features: entry.features.map((f) => (f === 'smallcam' ? 'Smallcam' : f)) };
+  if (entry.gen === 'Gen4' && Array.isArray(entry.features) && entry.features.some((f) => f === 'smallcam' || f === 'Smallcam')) {
+    entry = { ...entry, gen: 'Smallcam', carView: null, color: null, colorCustom: '' };
   }
   return entry;
 }
@@ -94,11 +90,10 @@ function isComplete(entry) {
   if (!entry) return false;
   if (entry.skipped || entry.rejected) return true;
   if (!GENS.includes(entry.gen)) return false;
-  if (!DETAILED_GENS.has(entry.gen)) return true;
   if (!isValidCopyrightYear(entry.copyrightYear)) return false;
+  if (!COLOR_GENS.has(entry.gen)) return true;
   if (!VIEWS.some(([view]) => view === entry.carView)) return false;
-  const smallcam = entry.features?.includes('Smallcam');
-  return smallcam || entry.carView === 'neither' || !!entry.color;
+  return entry.carView === 'neither' || !!entry.color;
 }
 
 async function load() {
@@ -130,8 +125,7 @@ function resetCurrent(existing, it) {
   const gen = existing.gen || suggestedGeneration(it);
   current = {
     gen,
-    features: Array.isArray(existing.features) ? [...existing.features] : [],
-    carView: existing.carView || (gen === 'Gen3' ? 'back' : 'front'),
+    carView: existing.carView || (gen === 'Gen4' ? 'front' : null),
     color: existing.color || 'Black',
     colorCustom: existing.colorCustom || '',
     copyrightYear: isValidCopyrightYear(existing.copyrightYear) ? existing.copyrightYear : null,
@@ -141,26 +135,18 @@ function resetCurrent(existing, it) {
   enforceStateRules();
 }
 
-function hasSmallcam() {
-  return current.gen === 'Gen4' && current.features.includes('Smallcam');
-}
-
 function enforceStateRules() {
-  const allowed = new Set(FEATURES[current.gen] || []);
-  current.features = current.features.filter((feature) => allowed.has(feature));
-  if (hasSmallcam()) current.carView = 'both';
-  if (hasSmallcam() || current.carView === 'neither') {
-    current.color = null;
-    current.colorCustom = '';
-  } else if (DETAILED_GENS.has(current.gen) && !current.color) {
-    current.color = 'Black';
-  }
-  if (!DETAILED_GENS.has(current.gen)) {
-    current.features = [];
+  if (!COLOR_GENS.has(current.gen)) {
     current.carView = null;
     current.color = null;
     current.colorCustom = '';
-    current.copyrightYear = null;
+    return;
+  }
+  if (current.carView === 'neither') {
+    current.color = null;
+    current.colorCustom = '';
+  } else if (!current.color) {
+    current.color = 'Black';
   }
 }
 
@@ -199,23 +185,17 @@ function render(reset = false) {
   // negative Z clamps back to the same view. Further zoom-out is only reachable by the
   // viewer's own interactive pinch/scroll, not via any URL parameter.
   const embedUrl = `https://www.google.com/maps/embed?pb=!4v${Date.now()}!6m8!1m7!1s${it.panoId}!2m2!1d${it.lat}!2d${it.lon}!3f${embedHeading}!4f0!5f0`;
-  const detailed = DETAILED_GENS.has(current.gen);
-  const smallcam = hasSmallcam();
-  const showColor = detailed && !smallcam && current.carView !== 'neither';
-  const featureOptions = FEATURES[current.gen] || [];
+  const showCarView = COLOR_GENS.has(current.gen);
+  const showColor = showCarView && current.carView !== 'neither';
   const watermarkFigure = it.images.watermark
     ? `<figure class="watermark"><img src="/${it.images.watermark}"><figcaption>Copyright watermark year</figcaption></figure>`
     : `<figure class="watermark"><figcaption>Watermark not captured — rerun capture-for-labeling</figcaption></figure>`;
 
-  const detailRows = detailed ? `
-        <div class="row">
-          <label class="title">Features (optional)</label>
-          <div class="opts">${featureOptions.map((feature) => `<label class="checkbox-option"><input type="checkbox" data-feature="${feature}" ${current.features.includes(feature) ? 'checked' : ''}><span>${feature}</span></label>`).join('')}</div>
-        </div>
-        <div class="row">
+  const detailRows = `
+        ${showCarView ? `<div class="row">
           <label class="title">Car / blur view</label>
-          <div class="opts">${VIEWS.map(([view, label]) => `<button class="opt" data-view="${view}" ${smallcam ? 'disabled' : ''}>${label}</button>`).join('')}</div>
-        </div>
+          <div class="opts">${VIEWS.map(([view, label]) => `<button class="opt" data-view="${view}">${label}</button>`).join('')}</div>
+        </div>` : ''}
         ${showColor ? `<div class="row" id="colorRow">
           <label class="title">Color</label>
           <div class="opts">${COLORS.map((color) => `<button class="opt" data-color="${color}">${color}</button>`).join('')}</div>
@@ -227,7 +207,7 @@ function render(reset = false) {
             ${yearGroups().map((group) => `<div class="year-group">${group.map((year) => `<label class="year-option"><input type="radio" name="copyrightYear" value="${year}" ${current.copyrightYear === year ? 'checked' : ''}><span>${year}</span></label>`).join('')}</div>`).join('')}
             <div class="year-group"><label class="year-option"><input type="radio" name="copyrightYear" value="unclear" ${current.copyrightYear === 'unclear' ? 'checked' : ''}><span>©unclear</span></label></div>
           </div>
-        </div>` : '';
+        </div>`;
 
   document.getElementById('main').innerHTML = `
     <div class="layout">
@@ -267,7 +247,7 @@ function render(reset = false) {
           <button class="btn-save" id="saveBtn">Save &amp; Next (Enter)</button>
           <button class="btn-nav" id="nextBtn">Next ▶</button>
         </div>
-        <div class="hint">数字キー1-5=世代 / F,B,O,N=車・ブラーの見え方 / Enter=保存して次へ / S=スキップ / X=Reject / ←→=移動</div>
+        <div class="hint">数字キー1-6=世代 / F,B,O,N=車・ブラーの見え方 / Enter=保存して次へ / S=スキップ / X=Reject / ←→=移動</div>
       </div>
     </div>
   `;
@@ -278,15 +258,7 @@ function render(reset = false) {
 
 function setGen(g) {
   current.gen = g;
-  if (g === 'Gen3' && !current.carView) current.carView = 'back';
   if (g === 'Gen4' && !current.carView) current.carView = 'front';
-  enforceStateRules();
-  render(false);
-}
-
-function toggleFeature(feature) {
-  if (current.features.includes(feature)) current.features = current.features.filter((value) => value !== feature);
-  else current.features.push(feature);
   enforceStateRules();
   render(false);
 }
@@ -302,9 +274,7 @@ function syncButtons() {
 
 function attachHandlers() {
   document.querySelectorAll('[data-gen]').forEach(b => b.onclick = () => setGen(b.dataset.gen));
-  document.querySelectorAll('[data-feature]').forEach(input => input.onchange = () => toggleFeature(input.dataset.feature));
   document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => {
-    if (hasSmallcam()) return;
     current.carView = b.dataset.view;
     enforceStateRules();
     render(false);
@@ -325,20 +295,19 @@ function attachHandlers() {
 async function save() {
   const it = items[idx];
   if (!current.gen) return alert('世代を選択してください。');
+  if (!isValidCopyrightYear(current.copyrightYear)) return alert('著作権年を選択してください(不鮮明な場合は©unclearを選択)。');
   const payload = {
     panoId: it.panoId,
     gen: current.gen,
     confidence: current.confidence,
     notes: current.notes,
+    copyrightYear: current.copyrightYear,
   };
-  if (DETAILED_GENS.has(current.gen)) {
-    if (!isValidCopyrightYear(current.copyrightYear)) return alert('著作権年を選択してください(不鮮明な場合は©unclearを選択)。');
+  if (COLOR_GENS.has(current.gen)) {
     if (!current.carView) return alert('車体およびブラーの見え方を選択してください。');
-    payload.features = [...current.features];
     payload.carView = current.carView;
-    payload.color = hasSmallcam() || current.carView === 'neither' ? null : current.color;
+    payload.color = current.carView === 'neither' ? null : current.color;
     payload.colorCustom = payload.color ? current.colorCustom : '';
-    payload.copyrightYear = current.copyrightYear;
   }
   const response = await fetch('/api/label', { method: 'POST', body: JSON.stringify(payload) });
   if (!response.ok) {
@@ -373,11 +342,11 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (idx >= items.length) return;
-  if (['1', '2', '3', '4', '5'].includes(e.key)) { setGen(GENS[parseInt(e.key) - 1]); }
-  else if (e.key.toLowerCase() === 'f' && !hasSmallcam()) { current.carView = 'front'; enforceStateRules(); render(false); }
-  else if (e.key.toLowerCase() === 'b' && !hasSmallcam()) { current.carView = 'back'; enforceStateRules(); render(false); }
-  else if (e.key.toLowerCase() === 'o' && !hasSmallcam()) { current.carView = 'both'; enforceStateRules(); render(false); }
-  else if (e.key.toLowerCase() === 'n' && !hasSmallcam()) { current.carView = 'neither'; enforceStateRules(); render(false); }
+  if (['1', '2', '3', '4', '5', '6'].includes(e.key)) { setGen(GENS[parseInt(e.key) - 1]); }
+  else if (e.key.toLowerCase() === 'f' && COLOR_GENS.has(current.gen)) { current.carView = 'front'; enforceStateRules(); render(false); }
+  else if (e.key.toLowerCase() === 'b' && COLOR_GENS.has(current.gen)) { current.carView = 'back'; enforceStateRules(); render(false); }
+  else if (e.key.toLowerCase() === 'o' && COLOR_GENS.has(current.gen)) { current.carView = 'both'; enforceStateRules(); render(false); }
+  else if (e.key.toLowerCase() === 'n' && COLOR_GENS.has(current.gen)) { current.carView = 'neither'; enforceStateRules(); render(false); }
   else if (e.key.toLowerCase() === 's') { skip(); }
   else if (e.key.toLowerCase() === 'x') { reject(); }
   else if (e.key === 'Enter') { save(); }
