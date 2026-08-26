@@ -158,7 +158,7 @@ export async function renderPanoView(panoId, heading, pitch, { fov = 90, outW = 
 // boundary can be a visibly bad seam (adjacent tiles from different lenses not lining up —
 // see the abandoned seam-detector NOTE near cropView). Trying to score the seam itself
 // pixel-by-pixel proved unreliable. ResolutionHeight from Google's metadata is used instead:
-// Vali identifies 8192px panoramas as Gen4-tier and 6656px panoramas as Gen3/Gen2/badcam.
+// Vali identifies 8192px panoramas as Gen4-tier and 6656px panoramas as Gen3/Gen2/Shitcam.
 // Lower-resolution views are nudged off their exact tile boundaries. For
 // `front`, -20° was selected after comparing -60/-45/-20/+20/+45/+70°: it keeps the road
 // naturally framed without the larger rotation used by -45°. For `back`, -60° (yaw=120,

@@ -6,25 +6,25 @@ import { Enum, Dbl, toProtobufUrl, fetchGoogleJson } from "./pb-url.mjs";
 
 export const RESOLUTION_HEIGHT = Object.freeze({
   GEN1_MAX: 1664,
-  GEN2_GEN3_BADCAM: 6656,
+  GEN2_GEN3_SHITCAM: 6656,
   GEN4: 8192,
 });
 
 export const RESOLUTION_CLASS = Object.freeze({
   GEN1: "Gen1",
-  GEN2_GEN3_BADCAM: "Gen2 / Gen3 / badcam",
+  GEN2_GEN3_SHITCAM: "Gen2 / Gen3 / Shitcam",
   GEN4: "Gen4",
   UNKNOWN: "Unknown",
 });
 
 // ResolutionHeight alone provides only these coarse camera-generation classes.
-// In particular, 6656 cannot distinguish Gen2, Gen3, and badcam.
+// In particular, 6656 cannot distinguish Gen2, Gen3, and Shitcam.
 export function classifyResolutionHeight(resolutionHeight) {
   if (!Number.isFinite(resolutionHeight)) return RESOLUTION_CLASS.UNKNOWN;
   if (resolutionHeight <= RESOLUTION_HEIGHT.GEN1_MAX) return RESOLUTION_CLASS.GEN1;
   if (resolutionHeight === RESOLUTION_HEIGHT.GEN4) return RESOLUTION_CLASS.GEN4;
-  if (resolutionHeight === RESOLUTION_HEIGHT.GEN2_GEN3_BADCAM) {
-    return RESOLUTION_CLASS.GEN2_GEN3_BADCAM;
+  if (resolutionHeight === RESOLUTION_HEIGHT.GEN2_GEN3_SHITCAM) {
+    return RESOLUTION_CLASS.GEN2_GEN3_SHITCAM;
   }
   return RESOLUTION_CLASS.UNKNOWN;
 }
