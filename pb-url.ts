@@ -9,17 +9,6 @@ export class Enum {
   }
 }
 
-// 整数値であっても強制的に「double」ワイヤータイプとして送るためのラッパー。
-// Pythonのprotobufエンコーダはint/floatを区別するが、JSの数値型には区別がないため、
-// radius=50 のような値は明示的にタグ付けしないとGoogle側のエンドポイントが
-// リクエストを黙って拒否してしまう。
-export class Dbl {
-  value: number;
-  constructor(value: number) {
-    this.value = value;
-  }
-}
-
 // このモジュールが組み立てる「protobuf風メッセージ」の値がとりうる形。
 // Googleの内部エンドポイントが期待するネストしたオブジェクト/配列構造を素朴に
 // JSのオブジェクトリテラルで表現しているため、フィールドタグ(キー)に意味的な名前は
@@ -29,7 +18,6 @@ export type PbValue =
   | string
   | boolean
   | Enum
-  | Dbl
   | PbValue[]
   | PbMessage;
 
@@ -47,7 +35,6 @@ function fieldToString(tag: string, value: PbValue): [number, string] {
     return [childCount, serialized];
   }
   if (value instanceof Enum) return [1, `!${tag}e${value.value}`];
-  if (value instanceof Dbl) return [1, `!${tag}d${value.value}`];
   if (typeof value === "boolean") return [1, `!${tag}b${value ? 1 : 0}`];
   if (typeof value === "number") {
     const type = Number.isInteger(value) ? "i" : "d";

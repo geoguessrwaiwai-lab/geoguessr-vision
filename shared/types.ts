@@ -32,9 +32,7 @@ export interface CustomCoordinatesFile {
 }
 
 /**
- * pano-meta.ts の getPanoMeta / findPanoramaNear が返すパノラマメタデータ。
- * Google内部エンドポイントの生レスポンスを構造化した結果で、車両が実際に向いていた
- * 方角(headingDeg/pitchDeg/rollDeg)を含む。
+ * Google内部エンドポイントから得られたパノラマメタデータ。
  */
 export interface PanoMeta {
   id: string;
@@ -42,16 +40,19 @@ export interface PanoMeta {
   resolutionClass: string;
   lat: number;
   lon: number;
+  /** 撮影車両が実際に向いていた真の方角(0-360、北=0、時計回り)。マップ制作者が選んだ表示用headingとは別物。 */
   headingDeg: number;
+  /** 水平を0とするカメラのピッチ角(正で上向き)。Googleの生値はzenith(天頂)基準なので`90 - 生値`に変換済み。 */
   pitchDeg: number;
+  /** カメラのロール角(水平線に対する傾き)。 */
   rollDeg: number;
   /** 撮影日("YYYY-M"形式)。取得できない場合はnull。 */
   date: string | null;
   /** ISO 3166-1 alpha-2の国コード(例: "US")。取得できない場合はnull。 */
   countryCode: string | null;
-  /** Street View左下に表示される著作権表記(例: "© 2024 Google")。取得できない場合はnull。 */
-  copyright: string | null;
-  /** Gen3のトレッカー撮影("scout")かどうか。 */
+  /** 公式のGoogle撮影のカバレッジであるかどうか。取得できない場合はfalse。 */
+  isGoogleOfficial: boolean;
+  /** Gen3のトレッカー撮影かどうか。 */
   isScout: boolean;
 }
 
@@ -123,4 +124,7 @@ export interface RejectedLabel {
 }
 
 /** labels.json はpanoIdをキーに、通常ラベルかスキップ/除外のいずれかを値に持つ。 */
-export type LabelsFile = Record<string, LabelEntry | SkippedLabel | RejectedLabel>;
+export type LabelsFile = Record<
+  string,
+  LabelEntry | SkippedLabel | RejectedLabel
+>;

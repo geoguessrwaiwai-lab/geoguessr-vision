@@ -24,7 +24,6 @@ npm install
 | `concurrency.ts`        | 地点を並列処理するための小さなワーカープール(内部モジュール)                              |
 | `capture-locations.ts`  | 地点JSON一括処理。各地点のground/sky帯+透かしクロップをレンダリング + manifest出力        |
 | `apply-tags.ts`         | タグ付け結果を`extra.tags`にマージして保存                                                |
-| `tag-copyright.ts`      | 著作権(撮影主体)を自動判定してタグ付け(画像判定不要、下記参照)                            |
 | `tag-watermark-year.ts` | 透かしの年号をOCRで自動タグ付け(Gen4のみ、読み取れない場合は`©unclear`、下記参照)         |
 | `tag-shitcam.ts`        | 既知の国・撮影日の組み合わせからShitcamを自動タグ付け(画像判定不要、下記参照)             |
 | `label-tool/`            | 世代・車体色・著作権年をラベリングするローカルWebツール                                   |
@@ -50,7 +49,7 @@ npm install
 
 ## タグ付けの方針
 
-`extra.tags`に付けるタグは、地点のカメラ世代に応じて次の5種類だけです。`apply-tags.ts`(手動/Claudeレビュー)・`tag-copyright.ts`・`tag-watermark-year.ts`・`label-tool`は、すべて同じ文字列語彙を使います(学習ラベルの各フィールド`gen`/`color`/`copyrightYear`は、そのままタグ文字列として書き出せる形で保存されています)。
+`extra.tags`に付けるタグは、地点のカメラ世代に応じて次の5種類だけです。`apply-tags.ts`(手動/Claudeレビュー)・`tag-watermark-year.ts`・`label-tool`は、すべて同じ文字列語彙を使います(学習ラベルの各フィールド`gen`/`color`/`copyrightYear`は、そのままタグ文字列として書き出せる形で保存されています)。
 
 `Smallcam`は`Gen4`と対等な独立した世代として扱います(`Gen4`の特徴・派生ではありません)。解像度は`Gen4`と同じ8192pxですが、車体・アンテナ等の見た目が異なる別カテゴリとして画像から判定します。
 
@@ -68,7 +67,6 @@ npm install
 - 透かしの著作権年は**全ての世代で常に抽出を試みる**(`tag-watermark-year.ts`のOCRは世代を問わず毎回実行される)。ただし単体タグとして`extra.tags`に書き込むのはGen4/Smallcamの地点のみ。理由は精度: 透かしの位置は世代によって差があり(古い撮影は上空付近に1箇所、新しい撮影は路面付近に複数箇所など)、Gen4/Smallcam以外への対応(クロップ位置の世代別最適化)は今後の改善候補として保留中
 - 透かしの年号が読み取れない(目視でも不鮮明)場合は`©unclear`とし、タグ自体を省略しない
 - 「車体色/Smallcam + 著作権年」の組み合わせタグ(表4・5)は、著作権年が判明している場合のみ付ける。`©unclear`の場合は組み合わせタグを作らず、単体の色/Smallcamタグと`©unclear`タグだけを付ける
-- 上記とは別に、**著作権の団体名**(例: `Google`, `Instituto Geografico Nacional`)は世代に関係なく全地点に自動で付く(`tag-copyright.ts`、下記参照)。これはGoogleのメタデータをそのまま読むだけで画像判定を伴わないため、世代による精度差がない
 
 ## 使い方1: 車の色などを判定してJSONにタグ付けする(半自動)
 
@@ -81,13 +79,10 @@ npx tsx capture-locations.ts step0.json ./renders --only-untagged
 #   上記「タグ付けの方針」に沿って世代・車体色のtags.jsonを作らせる
 npx tsx apply-tags.ts step0.json tags.json step1.json
 
-npx tsx tag-copyright.ts step1.json step2.json --only-untagged
-npx tsx tag-watermark-year.ts step2.json output.json --only-untagged
+npx tsx tag-watermark-year.ts step1.json output.json --only-untagged
 ```
 
 `extra.tags`に重複なくマージされます(panoIdの突合チェック付き)。詳細は各スクリプトの冒頭コメント参照。
-
-`tag-copyright.ts`が付ける著作権の団体名タグ(例: `Google`)は、Googleのメタデータをそのまま読むだけで完全自動・100%正確です。これは撮影日(`extra.panoDate`、GeoGuessrのエクスポートに既にある値)とも、同じ`copyright`フィールドに含まれる年部分(⚠️常にリクエストした「今日の年」を返すだけでパノラマ固有の情報ではなく、使わない)とも別物なので注意してください。
 
 透かしの著作権年は、[igs](https://github.com/iggedi-ig-ig)氏の[copyright-labeller](https://github.com/iggedi-ig-ig/copyright-labeller)(著作権OCRツール、~2/3のカバー率・~95%の正解率とのこと)と同じ技術方針(OCRの認識文字種を透かしが取りうる文字だけに絞り、1回のOCR結果を鵜呑みにせず複数の検出が一致した場合だけ採用する)を採用した`tag-watermark-year.ts`で自動タグ付けします。
 

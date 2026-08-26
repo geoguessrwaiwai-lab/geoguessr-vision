@@ -2,7 +2,7 @@
 //
 // 「panoIdをトップレベル/extra配下のどちらから拾うか」「タグの大文字小文字を無視した
 // 重複排除」「extra/extra.tagsの初期化」は、capture-locations.ts / apply-tags.ts /
-// tag-copyright.ts / tag-watermark-year.ts / tag-shitcam.ts の5ファイルでほぼ同じ
+// tag-watermark-year.ts / tag-shitcam.ts の4ファイルでほぼ同じ
 // コードがコピペされていた。ここに集約する。
 
 import type { Location } from "./types.ts";
