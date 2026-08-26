@@ -24,7 +24,6 @@ npm install
 | `apply-tags.mjs`         | タグ付け結果を`extra.tags`にマージして保存                                                |
 | `tag-copyright.mjs`      | 著作権(撮影主体)を自動判定してタグ付け(画像判定不要、下記参照)                            |
 | `tag-watermark-year.mjs` | 透かしの年号をOCRで自動タグ付け(Gen4のみ、読み取れない場合は`©unclear`、下記参照)         |
-| `gather-candidates.mjs`  | 学習データ収集用に、既存の`*-locations.json`や海外の代表地点からpanoIdの候補プールを作成  |
 | `label-tool/`            | 世代・車体色・著作権年をラベリングするローカルWebツール                                  |
 | `models/`(gitignore対象) | 学習済みモデルの出力先                                                                    |
 
@@ -94,23 +93,23 @@ node tag-watermark-year.mjs step2.json output.json --only-untagged
 
 ## 使い方2: Gen1-4 / 色の学習データを集める
 
+学習データ用のpanoId候補プール(`candidates.json`)は[Vali](https://github.com/geoguessrwaiwai-lab/Vali)側で生成します。このリポジトリでは生成しません。`candidates.json`は`{ lat, lon, panoId, headingDeg, date, sourceFile }`の配列で、Valiが出力したものをそのまま`label-tool/`に渡します。
+
 ```bash
-node gather-candidates.mjs label-tool/candidates.json --source-root=../Vali --per-file=3
 cd label-tool
-node capture-for-labeling.mjs candidates.json ./data
+node capture-for-labeling.mjs /path/to/vali-output/candidates.json ./data
 node server.mjs ./data
 # → http://localhost:4173 でラベリング
 ```
 
-既知のGen3地域（ウクライナ、韓国、レソト、エスワティニ、ブータン、ボリビア、ウルグアイ）だけを別バッチで収集する場合:
+既知のGen3地域（ウクライナ、韓国、レソト、エスワティニ、ブータン、ボリビア、ウルグアイ）など、世代があらかじめ分かっているバッチを別途追加する場合も、Vali側で該当する`candidates.json`を生成した上で`--append --preset-gen=Gen3`を付けて取り込みます:
 
 ```bash
-node gather-candidates.mjs label-tool/gen3-country-candidates.json --countries=UA,KR,LS,SZ,BT,BO,UY --radius=500
 cd label-tool
-node capture-for-labeling.mjs gen3-country-candidates.json ./data --append --preset-gen=Gen3
+node capture-for-labeling.mjs /path/to/vali-output/gen3-country-candidates.json ./data --append --preset-gen=Gen3
 ```
 
-候補検索時にGoogleメタデータの`scout`フラグを確認し、Gen3トレッカーは画像取得前に自動除外します。
+Gen3トレッカー(Googleメタデータの`scout`フラグが立った地点)の除外はVali側の候補生成時に行われます。
 既知の世代は`labels.json`へGen3として設定されます。車体色は画像レビュー時に追記できます。
 
 ラベリングツールは各地点について **Front/Back(真の進行方向とその180°反対、メイン)**、**Ground(360°帯、フォールバック)**、著作権年を読むための**Watermark**を表示します。
