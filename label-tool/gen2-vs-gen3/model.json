@@ -2,5 +2,6 @@
   "name": "Gen2 vs Gen3",
   "generations": ["Gen2", "Gen3", "Shitcam"],
   "colorGens": [],
-  "collectWatermark": false
+  "collectWatermark": false,
+  "dualBackPitch": { "bottom": -20, "top": 30 }
 }

@@ -62,6 +62,7 @@ let idx = 0;
 let GENS = [];
 let COLOR_GENS = new Set();
 let COLLECT_WATERMARK = true;
+let DUAL_BACK_PITCH = null;
 const VIEWS = [['front', 'Front (F)'], ['back', 'Back (B)'], ['both', 'Both (O)'], ['neither', 'Neither (N)']];
 const COLORS = ['White', 'Blue', 'Blue Striped', 'Silver', 'Grey', 'Black', 'Black Striped', 'Red', 'Navy', 'Other'];
 
@@ -91,6 +92,7 @@ async function load() {
   GENS = config.generations;
   COLOR_GENS = new Set(config.colorGens ?? []);
   COLLECT_WATERMARK = config.collectWatermark ?? true;
+  DUAL_BACK_PITCH = config.dualBackPitch ?? null;
   document.getElementById('modelName').textContent = config.name;
   document.title = config.name;
   items = await (await fetch('/api/items')).json();
@@ -154,7 +156,8 @@ function render(reset = false) {
   const { it, existing } = state();
   if (reset) resetCurrent(existing, it);
   const labeledCount = items.filter((it) => isComplete(labels[it.panoId])).length;
-  document.getElementById('progress').textContent = `${labeledCount} / ${items.length} labeled  (#${idx + 1})`;
+  const percent = Math.round((labeledCount / items.length) * 100);
+  document.getElementById('progress').textContent = `${labeledCount} / ${items.length} labeled (${percent}%)  (#${idx + 1})`;
   const mapsUrl = `https://www.google.com/maps/@?api=1&map_action=pano&pano=${it.panoId}`;
   document.getElementById('meta').innerHTML =
     `${it.panoId} | ${it.date ?? '?'} | ${it.sourceFile ?? ''} | ${it.lat?.toFixed(4)},${it.lon?.toFixed(4)} ` +
@@ -186,8 +189,11 @@ function ensureSkeleton() {
 function renderTop(it) {
   const embedHeading = it.headingDeg ?? 0;
   const isGen4Resolution = it.resolutionHeight === 8192;
-  const frontYaw = isGen4Resolution ? '0°' : '-20°';
-  const backYaw = isGen4Resolution ? '180°' : '120°';
+  // dualBackPitchのモデル(gen2-vs-gen3)では、images.front/backはfront/back方向ではなく
+  // back方向だけをpitch違いで切り出したもの(images.front=上寄り、images.back=下寄り)
+  // なので、通常のFront/Backのyawキャプションではなく実際のpitchを表示する。
+  const frontLabel = DUAL_BACK_PITCH ? `Back — top (pitch: ${DUAL_BACK_PITCH.top}°)` : `Front (yaw: ${isGen4Resolution ? '0°' : '-20°'})`;
+  const backLabel = DUAL_BACK_PITCH ? `Back — bottom (pitch: ${DUAL_BACK_PITCH.bottom}°)` : `Back (yaw: ${isGen4Resolution ? '180°' : '120°'})`;
   // The pb embed URL's "!5f" field isn't a raw fov degree value — it's a separate zoom
   // number that maps to fov via fov ≈ -23.59*Z + 93.45. Empirically (screenshot-tested),
   // Z=0 (fov≈93.45°) is already the most zoomed-out state settable through the URL; more
@@ -205,8 +211,8 @@ function renderTop(it) {
   document.getElementById('topSection').innerHTML = `
     <div class="images">
       <div class="primary-views">
-        <figure><img src="/${it.images.front}"><figcaption>Front (${it.resolutionHeight ?? '?'}px; ${it.resolutionClass ?? 'Unknown'}; yaw: ${frontYaw})</figcaption></figure>
-        <figure><img src="/${it.images.back}"><figcaption>Back (${it.resolutionHeight ?? '?'}px; ${it.resolutionClass ?? 'Unknown'}; yaw: ${backYaw})</figcaption></figure>
+        <figure><img src="/${it.images.front}"><figcaption>${frontLabel} (${it.resolutionHeight ?? '?'}px; ${it.resolutionClass ?? 'Unknown'})</figcaption></figure>
+        <figure><img src="/${it.images.back}"><figcaption>${backLabel} (${it.resolutionHeight ?? '?'}px; ${it.resolutionClass ?? 'Unknown'})</figcaption></figure>
       </div>
       ${secondaryViews}
     </div>

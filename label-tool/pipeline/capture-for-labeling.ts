@@ -1,13 +1,18 @@
 import fs from "node:fs";
 import path from "node:path";
-import { renderLocationBundle } from "../../render-pano.ts";
+import { renderLocationBundle, renderDualBackViews, renderWatermarkCrop } from "../../render-pano.ts";
 import { mapConcurrent } from "../../concurrency.ts";
 import { positionalArgs, getFlagInt, hasFlag, getFlagValue } from "../../shared/cli-args.ts";
 import { isGeneration } from "../../shared/generations.ts";
 import type { Generation } from "../../shared/generations.ts";
-import type { LabelItem, LabelsFile } from "../../shared/types.ts";
+import type { LabelItem, LabelsFile, LabelToolConfig } from "../../shared/types.ts";
 
-// 使い方: npx tsx capture-for-labeling.ts <candidates.json> <outDir> [--concurrency=N] [--append] [--preset-gen=Gen3]
+// 使い方: npx tsx capture-for-labeling.ts <candidates.json> <outDir> [--concurrency=N] [--append] [--preset-gen=Gen3] [--force]
+//
+// --forceを付けると、既にitems.jsonにある候補(panoId一致)もスキップせず再レンダリングし、
+// 既存エントリを新しい画像パスの内容で上書きする(items.json自体の並び・件数は変えない)。
+// model.jsonのレンダリング方式(dualBackPitchなど)を変更した後、既存データセットの画像を
+// 作り直す用途。
 //
 // 各候補 { panoId, headingDeg, date, lat, lon, sourceFile } について、
 // outDir/images/<panoId>/ にレンダリングする: front.jpg/back.jpg(想定yaw 0°/180°での
@@ -46,11 +51,12 @@ async function main() {
   const [candidatesPath, outDir] = positionalArgs(args);
   const concurrency = getFlagInt(args, "concurrency", 8);
   const append = hasFlag(args, "append");
+  const force = hasFlag(args, "force");
   const presetGenArg = getFlagValue(args, "preset-gen");
 
   if (!candidatesPath || !outDir) {
     console.error(
-      "Usage: npx tsx capture-for-labeling.ts <candidates.json> <outDir> [--concurrency=N] [--append] [--preset-gen=Gen3]",
+      "Usage: npx tsx capture-for-labeling.ts <candidates.json> <outDir> [--concurrency=N] [--append] [--preset-gen=Gen3] [--force]",
     );
     process.exit(1);
   }
@@ -65,21 +71,28 @@ async function main() {
   const presetGen: Generation | null = presetGenArg && isGeneration(presetGenArg) ? presetGenArg : null;
 
   const modelConfigPath = path.join(outDir, "model.json");
-  const collectWatermark = fs.existsSync(modelConfigPath)
-    ? (JSON.parse(fs.readFileSync(modelConfigPath, "utf8")).collectWatermark ?? true)
-    : true;
+  const modelConfig: (LabelToolConfig & { collectWatermark?: boolean }) | null = fs.existsSync(modelConfigPath)
+    ? JSON.parse(fs.readFileSync(modelConfigPath, "utf8"))
+    : null;
+  const collectWatermark = modelConfig?.collectWatermark ?? true;
+  const dualBackPitch = modelConfig?.dualBackPitch;
 
   const allCandidates: Candidate[] = JSON.parse(fs.readFileSync(candidatesPath, "utf8"));
   const imagesDir = path.join(outDir, "images");
   fs.mkdirSync(imagesDir, { recursive: true });
   const itemsPath = path.join(outDir, "items.json");
+  // --forceは--appendと同様に既存items.jsonを土台にするが、既存panoIdもスキップせず
+  // 再レンダリングし、その結果で既存エントリを置き換える(件数は変えない) —
+  // model.jsonのレンダリング方式を変えた後、複数のcandidatesファイルにまたがる既存
+  // データセットの画像を作り直す用途(items.jsonは呼び出しごとに1ファイル分ずつ
+  // 積み上がっているため、--appendで走らせ直すだけでは既存panoIdがスキップされてしまう)。
   const existingItems: LabelItem[] =
-    append && fs.existsSync(itemsPath) ? JSON.parse(fs.readFileSync(itemsPath, "utf8")) : [];
+    (append || force) && fs.existsSync(itemsPath) ? JSON.parse(fs.readFileSync(itemsPath, "utf8")) : [];
   const existingPanoIds = new Set(existingItems.map((item) => item.panoId));
-  const candidates = allCandidates.filter((candidate) => !existingPanoIds.has(candidate.panoId));
+  const candidates = force ? allCandidates : allCandidates.filter((candidate) => !existingPanoIds.has(candidate.panoId));
 
-  if (append) {
-    console.log(`append mode: ${existingItems.length} existing, ${candidates.length} new candidates`);
+  if (append || force) {
+    console.log(`${force ? "force" : "append"} mode: ${existingItems.length} existing, ${candidates.length} candidates to render`);
   }
 
   const started = Date.now();
@@ -87,12 +100,25 @@ async function main() {
     const dir = path.join(imagesDir, c.panoId);
     fs.mkdirSync(dir, { recursive: true });
     try {
-      const { front, back, watermark, resolutionHeight, resolutionClass } = await renderLocationBundle(c.panoId, {
-        zoom: 3,
-        resolutionHeight: c.resolutionHeight,
-      });
-      const writes = [front.toFile(path.join(dir, "front.jpg")), back.toFile(path.join(dir, "back.jpg"))];
-      if (collectWatermark) writes.push(watermark.toFile(path.join(dir, "watermark.jpg")));
+      let front, back, resolutionHeight, resolutionClass;
+      const writes: Promise<unknown>[] = [];
+      if (dualBackPitch) {
+        ({ top: front, bottom: back, resolutionHeight, resolutionClass } = await renderDualBackViews(c.panoId, {
+          zoom: 3,
+          bottomPitch: dualBackPitch.bottom,
+          topPitch: dualBackPitch.top,
+          resolutionHeight: c.resolutionHeight,
+        }));
+        // dualBackPitchのモデルは今のところcollectWatermark:falseで使う想定だが、
+        // 併用された場合に備えて別途1回stitchして透かしを切り出す(renderDualBackViews
+        // 自体には持たせない — 通常経路にzoom=2の透かし専用stitchを混ぜたくないため)。
+        if (collectWatermark) writes.push(renderWatermarkCrop(c.panoId).then((w) => w.toFile(path.join(dir, "watermark.jpg"))));
+      } else {
+        const bundle = await renderLocationBundle(c.panoId, { zoom: 3, resolutionHeight: c.resolutionHeight });
+        ({ front, back, resolutionHeight, resolutionClass } = bundle);
+        if (collectWatermark) writes.push(bundle.watermark.toFile(path.join(dir, "watermark.jpg")));
+      }
+      writes.push(front.toFile(path.join(dir, "front.jpg")), back.toFile(path.join(dir, "back.jpg")));
       await Promise.all(writes);
       console.log(`[${i + 1}/${candidates.length}] ${c.panoId} done`);
       return {
@@ -119,7 +145,15 @@ async function main() {
   });
 
   const addedItems = results.filter((r): r is LabelItem => r !== null);
-  const items = [...existingItems, ...addedItems];
+  let items: LabelItem[];
+  if (force) {
+    const rerendered = new Map(addedItems.map((item) => [item.panoId, item]));
+    const kept = existingItems.map((item) => rerendered.get(item.panoId) ?? item);
+    const brandNew = addedItems.filter((item) => !existingPanoIds.has(item.panoId));
+    items = [...kept, ...brandNew];
+  } else {
+    items = [...existingItems, ...addedItems];
+  }
   fs.writeFileSync(itemsPath, JSON.stringify(items, null, 2));
 
   if (presetGen) {
@@ -139,7 +173,9 @@ async function main() {
     console.log(`Preset ${addedItems.length} new labels to ${presetGen}; hood color remains available for review`);
   }
   const elapsed = ((Date.now() - started) / 1000).toFixed(1);
-  console.log(`\nWrote ${items.length} total items (${addedItems.length} added) to ${outDir}/items.json in ${elapsed}s`);
+  console.log(
+    `\nWrote ${items.length} total items (${addedItems.length} ${force ? "re-rendered" : "added"}) to ${outDir}/items.json in ${elapsed}s`,
+  );
 }
 
 await main();
