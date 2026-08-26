@@ -97,7 +97,7 @@ async function load() {
   labels = await (await fetch('/api/labels')).json();
   for (const panoId of Object.keys(labels)) labels[panoId] = normalizeLegacyLabel(labels[panoId]);
   idx = items.findIndex(it => !isComplete(labels[it.panoId]));
-  if (idx === -1) idx = 0;
+  if (idx === -1) idx = items.length;
   render(true);
 }
 
