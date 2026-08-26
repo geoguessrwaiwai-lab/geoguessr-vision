@@ -87,13 +87,6 @@ export interface LabelToolConfig {
   generations: Generation[];
   /** 車体色・ブラーの見え方を集める世代。省略時は空(このモデルでは色を扱わない)。 */
   colorGens?: Generation[];
-  /**
-   * 指定時、front/backの代わりにback方向だけをpitch違いで2枚(bottom/top)切り出す。
-   * gen2-vs-gen3向け: 標準pitch(-20°)では車体がほぼ写らないため、back方向のpitchを
-   * 振って空・遠景のブラーパターンを見せた方が世代の見分けに有効だった(render-pano.ts
-   * のrenderDualBackViews参照)。
-   */
-  dualBackPitch?: { bottom: number; top: number };
 }
 
 /** label-tool の items.json に書き出される1候補分のレコード。 */

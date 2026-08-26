@@ -25,6 +25,9 @@ GoogleのAPIキーは一切不要で、ノーコストで実行できます。
 | `tag-watermark-year.ts`            | 透かしの年号をOCRで自動タグ付け(Gen4/Smallcamのみ、読み取れない場合は`©unclear`)                                                                                                                                 |
 | `tag-shitcam.ts`                   | 既知の国・撮影日の組み合わせからShitcamを自動タグ付け(画像判定不要)                                                                                                                                              |
 | `tag-month.ts`                     | Googleメタデータの撮影日から撮影月(`January`〜`December`)を自動タグ付け(全世代対象、画像判定不要)                                                                                                                |
+| `tag-gen2-gen3-by-date.ts`          | 撮影年だけでGen2/Gen3が機械的に決まる範囲(2009年以前/2013年以降)を自動タグ付け。境界年(2010-2012)は未タグのまま残す                                                                                              |
+| `tag-gen2-gen3-by-model.ts`         | `training/gen2-vs-gen3/`で学習した`models/gen2-vs-gen3.onnx`を使い、境界年(2010-2012)など画像ベースの判定が必要な地点をタグ付け(`onnxruntime-node`経由、推論にAPI課金・ネットワーク通信は不要)                     |
+| `training/gen2-vs-gen3/`            | Gen2 vs Gen3モデルの学習コード一式(Python/PyTorch)。詳細は下記「モデル2: Gen2 or Gen3」参照                                                                                                                      |
 | `shared/generations.ts`            | カノニカルな世代語彙(`Gen1`/`Gen2`/`Gen3`/`Gen4`/`Smallcam`/`Shitcam`)と`COLOR_GENS`(車体色収集の対象、現状Gen4のみ)の定義                                                                                       |
 | `label-tool/pipeline/resolve-locations.ts`  | Valiが出力する生のロケーションJSON(`{lat, lng, heading, extra.tags, panoId}`)を、panoIdごとに`getPanoMeta()`で補完して学習用`candidates.json`形式に変換。デフォルトで`resolutionHeight===6656`のみ残す(下記参照) |
 | `label-tool/pipeline/capture-for-labeling.ts` | 候補ごとにfront/back/watermarkをレンダリングし、ラベリングツールが読む`items.json`を生成(`--preset-gen`で既知世代を仮ラベル可)                                                                                  |
@@ -125,3 +128,22 @@ npx tsx label-tool/pipeline/migrate-label-format.ts label-tool/<model-name> labe
 それぞれのモデルは`label-tool/<model-name>/`という専用のデータフォルダ・`model.json`・(将来的には)`models/<model-name>.onnx`という専用の出力を持つ。
 
 学習済みモデルは`models/`にONNX形式で出力し、Claude/Codexなど特定のAIツールに依存せず、Node.js側から`onnxruntime-node`経由で直接呼び出せるようにする(推論にAPI課金・ネットワーク通信は不要)。
+
+## モデル2: Gen2 or Gen3(実装済み)
+
+`training/gen2-vs-gen3/`にPyTorchの学習コード一式がある(このリポジトリの他スクリプトはTypeScriptだが、事前学習済みCNNバックボーンの転移学習・ONNXエクスポートはPyTorch/torchvisionの方が枯れているため、学習だけPythonで行う方針。推論は上記の通りNode.js側)。
+
+- `prepare_manifest.py`: `label-tool/gen2-vs-gen3/`の`items.json`+`labels.json`から、撮影年×クラスで層化train/val/test分割した`splits.json`を作る(境界年2010-2012がテストに十分残るように)。
+- `model.py`: front/back共有のMobileNetV3-Smallバックボーン→特徴ベクトル結合→MLPの2分岐モデル(README「機械学習の方針」の設計そのまま)。
+- `dataset.py` / `train.py`: 学習ループ。クラス不均衡(Gen2 269 / Gen3 1003)対策として、層化サンプリングではなくCrossEntropyLossへのclass weightingを採用。検証指標はaccuracyではなくmacro F1。
+- `export_onnx.py`: 学習済み`checkpoint.pt`を`models/gen2-vs-gen3.onnx`にエクスポートし、PyTorchとonnxruntimeの出力一致を検証する。
+
+境界年(2010-2012)だけのテストサブセットでもmacro F1 0.977と、標準のfront(yaw0)/back(yaw180)、pitch -20°スキームのままで十分な精度が出ている(2026-08-26に検証)。back方向をpitch違いで2枚見せる案も一時検討したが、未検証のまま先行して設定を入れると学習データと`tag-gen2-gen3-by-model.ts`のレンダリング幾何が食い違うリスクがあるため撤回し、標準スキームに一本化した。
+
+使い方:
+
+```bash
+# 学習(必要なら): cd training/gen2-vs-gen3 && python3 prepare_manifest.py && python3 train.py && python3 export_onnx.py
+npx tsx tag-gen2-gen3-by-date.ts step0.json step0b.json --only-untagged
+npx tsx tag-gen2-gen3-by-model.ts step0b.json step1.json --only-untagged
+```

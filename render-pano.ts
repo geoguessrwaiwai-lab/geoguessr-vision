@@ -410,44 +410,6 @@ export async function renderLocationBundle(
   };
 }
 
-export interface DualBackViewOptions {
-  zoom?: number;
-  bottomPitch?: number;
-  topPitch?: number;
-  fov?: number;
-  resolutionHeight?: number | null;
-}
-
-export interface DualBackViewResult {
-  bottom: Sharp;
-  top: Sharp;
-  resolutionHeight: number;
-  resolutionClass: string;
-}
-
-// Gen2/Gen3判別モデル向け: front/backではなく、back方向(車の後方)だけをpitch違いで
-// 2枚切り出す。標準のfront/back(pitch -20°)では車体そのものがほぼ写らず、
-// 地平線際に潰れた薄い帯としてしか見えないケースが多い(gen2-vs-gen3のラベリング
-// データで確認済み)。back方向のpitchを浅く(上向きに)振ると、代わりに空・遠景に
-// 現れる特徴的なブラー/継ぎ目パターンがより明瞭に写り、世代の見分けに有効だった。
-export async function renderDualBackViews(
-  panoId: string,
-  { zoom = 3, bottomPitch = -20, topPitch = 30, fov = 80, resolutionHeight }: DualBackViewOptions = {},
-): Promise<DualBackViewResult> {
-  const [equirect, resolvedHeight] = await Promise.all([
-    stitchEquirect(panoId, zoom),
-    resolveResolutionHeight(panoId, resolutionHeight),
-  ]);
-  const resolutionClass = classifyResolutionHeight(resolvedHeight);
-  const { backYaw } = resolveCarViewYaws(resolvedHeight);
-  return {
-    bottom: cropView(equirect, backYaw, bottomPitch, fov, 900, 700, 0),
-    top: cropView(equirect, backYaw, topPitch, fov, 900, 700, 0),
-    resolutionHeight: resolvedHeight,
-    resolutionClass,
-  };
-}
-
 // CLI: npx tsx render-pano.ts <panoId> <outFile>
 // Street Viewの撮影車のボンネットが通常写るビュー(yaw=0、パノラマ自身の前方方向 —
 // headingDegではない理由はrenderCarViews参照)をレンダリングする。

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { renderLocationBundle, renderDualBackViews, renderWatermarkCrop } from "../../render-pano.ts";
+import { renderLocationBundle } from "../../render-pano.ts";
 import { mapConcurrent } from "../../concurrency.ts";
 import { positionalArgs, getFlagInt, hasFlag, getFlagValue } from "../../shared/cli-args.ts";
 import { isGeneration } from "../../shared/generations.ts";
@@ -11,8 +11,7 @@ import type { LabelItem, LabelsFile, LabelToolConfig } from "../../shared/types.
 //
 // --forceを付けると、既にitems.jsonにある候補(panoId一致)もスキップせず再レンダリングし、
 // 既存エントリを新しい画像パスの内容で上書きする(items.json自体の並び・件数は変えない)。
-// model.jsonのレンダリング方式(dualBackPitchなど)を変更した後、既存データセットの画像を
-// 作り直す用途。
+// レンダリングの幾何(pitch/fov等)を変更した後、既存データセットの画像を作り直す用途。
 //
 // 各候補 { panoId, headingDeg, date, lat, lon, sourceFile } について、
 // outDir/images/<panoId>/ にレンダリングする: front.jpg/back.jpg(想定yaw 0°/180°での
@@ -75,7 +74,6 @@ async function main() {
     ? JSON.parse(fs.readFileSync(modelConfigPath, "utf8"))
     : null;
   const collectWatermark = modelConfig?.collectWatermark ?? true;
-  const dualBackPitch = modelConfig?.dualBackPitch;
 
   const allCandidates: Candidate[] = JSON.parse(fs.readFileSync(candidatesPath, "utf8"));
   const imagesDir = path.join(outDir, "images");
@@ -100,25 +98,10 @@ async function main() {
     const dir = path.join(imagesDir, c.panoId);
     fs.mkdirSync(dir, { recursive: true });
     try {
-      let front, back, resolutionHeight, resolutionClass;
-      const writes: Promise<unknown>[] = [];
-      if (dualBackPitch) {
-        ({ top: front, bottom: back, resolutionHeight, resolutionClass } = await renderDualBackViews(c.panoId, {
-          zoom: 3,
-          bottomPitch: dualBackPitch.bottom,
-          topPitch: dualBackPitch.top,
-          resolutionHeight: c.resolutionHeight,
-        }));
-        // dualBackPitchのモデルは今のところcollectWatermark:falseで使う想定だが、
-        // 併用された場合に備えて別途1回stitchして透かしを切り出す(renderDualBackViews
-        // 自体には持たせない — 通常経路にzoom=2の透かし専用stitchを混ぜたくないため)。
-        if (collectWatermark) writes.push(renderWatermarkCrop(c.panoId).then((w) => w.toFile(path.join(dir, "watermark.jpg"))));
-      } else {
-        const bundle = await renderLocationBundle(c.panoId, { zoom: 3, resolutionHeight: c.resolutionHeight });
-        ({ front, back, resolutionHeight, resolutionClass } = bundle);
-        if (collectWatermark) writes.push(bundle.watermark.toFile(path.join(dir, "watermark.jpg")));
-      }
-      writes.push(front.toFile(path.join(dir, "front.jpg")), back.toFile(path.join(dir, "back.jpg")));
+      const bundle = await renderLocationBundle(c.panoId, { zoom: 3, resolutionHeight: c.resolutionHeight });
+      const { front, back, resolutionHeight, resolutionClass } = bundle;
+      const writes: Promise<unknown>[] = [front.toFile(path.join(dir, "front.jpg")), back.toFile(path.join(dir, "back.jpg"))];
+      if (collectWatermark) writes.push(bundle.watermark.toFile(path.join(dir, "watermark.jpg")));
       await Promise.all(writes);
       console.log(`[${i + 1}/${candidates.length}] ${c.panoId} done`);
       return {

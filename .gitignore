@@ -13,4 +13,7 @@ models/
 .DS_Store
 npm-debug.log*
 *.traineddata
+__pycache__/
+training/*/checkpoint.pt
+training/*/splits.json
 
