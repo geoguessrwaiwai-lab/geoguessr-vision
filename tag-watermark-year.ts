@@ -9,8 +9,9 @@ import type { CustomCoordinatesFile, Location } from "./shared/types.ts";
 // 使い方:
 //   npx tsx tag-watermark-year.ts <input.json> <output.json> [--only-untagged] [--concurrency=N]
 //
-// 既にGen4(またはSmallcam)としてタグ付けされている地点にのみタグを書き込む —
-// なぜOCR自体は世代を問わず毎回実行されるのかは下の注記を参照。
+// 既にGen4(またはSmallcam)としてタグ付けされている地点にのみOCRを実行しタグを書き込む —
+// それ以外の世代は透かしの位置/判読性がこのクロップ&OCR方式では信頼できないほど異なる
+// ため、そもそも対象から除外する。
 //
 // パノラマのタイルに焼き込まれた「© YYYY Google」透かしの年を自動で読み取る —
 // render-pano.tsのrenderWatermarkCropが、単純なOCR(以前tesseract/EasyOCRを試した)では
@@ -45,12 +46,10 @@ import type { CustomCoordinatesFile, Location } from "./shared/types.ts";
 // 分類される(どちらのパスも妥当な年を見つけられないため)が、そもそもクロップされて
 // いないテキストはどんなOCR戦略でも読めない。
 //
-// OCRパスはカメラ世代に関わらず常に実行されるが、結果のタグがextra.tagsに実際に書き込まれる
-// のはGen4またはその兄弟世代Smallcamの場合のみ — READMEのタグ語彙表を参照。それより古い
-// 世代は透かしの位置/判読性がこのクロップ&OCR方式では信頼できないほど異なる
-// (世代別クロップ戦略は将来の改善候補として書き留めてあるが未実装)。世代を問わず無条件に
-// OCRを実行しておくことで、非Gen4地点を信頼性の低いタグで汚すことなく、その将来の対応の
-// 余地を残している。これは世代タグ(apply-tags.tsから)が既にextra.tagsに存在することを
+// 対象はGen4またはその兄弟世代Smallcamの地点だけ — READMEのタグ語彙表を参照。それより
+// 古い世代は透かしの位置/判読性がこのクロップ&OCR方式では信頼できないほど異なるため
+// (世代別クロップ戦略は将来の改善候補として書き留めてあるが未実装)、OCR自体を実行せず
+// スキップする。これは世代タグ(apply-tags.tsから)が既にextra.tagsに存在することを
 // 前提とする — 世代タグ付けの後に実行すること、前ではない。
 
 const LAUNCH_YEAR = 2007; // Street Viewの一般公開年
@@ -112,7 +111,7 @@ async function readWatermarkYear(worker: Worker, panoId: string): Promise<Waterm
   return { unclear: true };
 }
 
-// 透かしの年タグ書き込み対象となる世代かどうか(Gen4またはその兄弟世代Smallcamのみ)。
+// OCR・タグ書き込みの対象となる世代かどうか(Gen4またはその兄弟世代Smallcamのみ)。
 // shared/generations.tsのCOLOR_GENS(車体色収集の対象、現状Gen4のみ)とは判定基準が
 // 異なる(こちらはSmallcamも含む)ため、あえて別の判定として local に持つ。
 function hasWatermarkYearGeneration(c: Location): boolean {
@@ -135,7 +134,9 @@ async function main() {
 
   const data: CustomCoordinatesFile = JSON.parse(fs.readFileSync(inputPath, "utf8"));
 
-  let coords = data.customCoordinates.map((c, index) => ({ c, index }));
+  let coords = data.customCoordinates
+    .map((c, index) => ({ c, index }))
+    .filter(({ c }) => hasWatermarkYearGeneration(c));
   if (onlyUntagged) {
     coords = coords.filter(({ c }) => {
       const tags = c.extra?.tags ?? [];
@@ -175,10 +176,6 @@ async function main() {
       try {
         const result = await readWatermarkYear(worker, panoId);
         const tag = "unclear" in result ? UNCLEAR_TAG : `©${result.year}`;
-        if (!hasWatermarkYearGeneration(c)) {
-          console.log(`[${index}] ${panoId} -> "${tag}" (not written: generation isn't Gen4)`);
-          continue;
-        }
         const tags = ensureExtraTags(c);
         if (addTagIfNew(tags, tag)) {
           if ("unclear" in result) unclear++;

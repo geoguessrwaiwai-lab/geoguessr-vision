@@ -2,8 +2,6 @@
 
 [Vali](https://github.com/geoguessrwaiwai-lab/Vali)などで生成済みの地点JSON(`extra.tags`を持つ形式)に対して、Street Viewの見え方から**カメラ世代・著作権年・車体色**を判定し、タグ付けしたJSONを保存するためのコンピュータビジョン・機械学習ツールです。
 
-GoogleのAPIキーは一切不要で、ノーコストで実行できます。
-
 ## セットアップ
 
 ```bash
@@ -12,66 +10,69 @@ cd geoguessr-vision
 npm install
 ```
 
-全スクリプトはTypeScriptで書かれており、[tsx](https://github.com/privatenumber/tsx)でビルドなしに直接実行します(`npx tsx foo.ts`、`node foo.ts`ではない点に注意)。型エラーの確認は`npm run typecheck`で行えます。
-
-## 構成
-
-| ファイル/フォルダ                 | 用途                                                                                                                                                                                                             |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pb-url.ts`                       | Google内部エンドポイント用の擬似protobuf URLエンコーダ(内部モジュール)                                                                                                                                           |
-| `pano-meta.ts`                    | panoIdからパノラマのメタデータ(真の進行方向/roll、解像度、撮影日、国コード等)を取得(内部モジュール)                                                                                                              |
-| `render-pano.ts`                  | パノラマタイルの合成・レンダリング(内部モジュール、詳細は下記)                                                                                                                                                   |
-| `concurrency.ts`                  | 地点を並列処理するための小さなワーカープール(内部モジュール)                                                                                                                                                     |
-| `capture-locations.ts`            | 地点JSON一括処理。各地点のfront/back+透かしクロップをレンダリング + manifest出力                                                                                                                                 |
-| `apply-tags.ts`                   | タグ付け結果を`extra.tags`にマージして保存                                                                                                                                                                       |
-| `tag-watermark-year.ts`           | 透かしの年号をOCRで自動タグ付け(Gen4のみ、読み取れない場合は`©unclear`、下記参照)                                                                                                                                |
-| `tag-shitcam.ts`                  | 既知の国・撮影日の組み合わせからShitcamを自動タグ付け(画像判定不要、下記参照)                                                                                                                                    |
-| `label-tool/resolve-locations.ts` | Valiが出力する生のロケーションJSON(`{lat, lng, heading, extra.tags, panoId}`)を、panoIdごとに`getPanoMeta()`で補完して学習用`candidates.json`形式に変換。デフォルトで`resolutionHeight===6656`のみ残す(下記参照) |
-| `label-tool/`                     | 世代・車体色をラベリングするローカルWebツール。モデルごとにデータフォルダを分けて使う(下記参照)                                                                                                                  |
-| `models/`(gitignore対象)          | 学習済みモデルの出力先                                                                                                                                                                                           |
-
-## レンダリング方式: front/back(透視図)のみ
-
-- `front`/`back`(基準は真の進行方向とその180°反対、pitch -20°): 車のボンネットが自然な形で写る、確認に使う画像。Googleメタデータの`ResolutionHeight`が8192ではない画像では、タイル境界を避けるためfrontを-20°、backを-60°ずらす。
-
-内部的には`renderLocationBundle()`が1回のタイル取得からfront/back/watermarkを全部切り出します。
-
-`ResolutionHeight`による世代区分は次の共通定義を使用します(`pano-meta.ts`の`classifyResolutionHeight`)。定義外の値は`Unknown`とし、推測では分類しません。
-
-| ResolutionHeight | 区分                                                          |
-| ---------------- | ------------------------------------------------------------- |
-| `1664`以下       | `Gen1`                                                        |
-| `8192`           | `Gen4` / `Smallcam`(同じ解像度で、両者の区別は画像を見て行う) |
-| `6656`           | `Gen2 / Gen3 / Shitcam`(これらは解像度だけでは区別できない)   |
-
-`6656`の3パターン(Gen2 / Gen3 / Shitcam)を画像なしで区別する部分的な手段として`tag-shitcam.ts`があります(下記参照)。ただしこれは既知の国・撮影日の組み合わせだけを機械的に拾う手法で、Shitcamを網羅的に検出するものではありません(未収録の国・期間のShitcamは見逃します、意図的に許容している false negative)。
-
-残る「Gen2とGen3の区別」は単純なメタデータ比較では達成できないため、画像から学習したモデルで行う方針です(下記「使い方2」「学習方針」参照)。`resolutionHeight`が既にGen1・Gen4/Smallcam・6656の3層を機械的に分離できている以上、6656バケット専用の**Gen2 vs Gen3の2値分類モデル**を別立てで学習します(Gen1/Gen4まで含む1つの多クラスモデルにはしない — 解像度だけで解ける分類を画像モデルに学習させ直すのは無駄で、Gen2/Gen3の学習信号も薄まるため)。Shitcamは`tag-shitcam.ts`で拾いきれない分の取りこぼしを許容し、このモデルの対象には含めません。未収録のShitcamの網羅的な検出は現状未実装です(保留)。
-
 ## タグ付けの方針
 
-`extra.tags`に付けるタグは、地点のカメラ世代に応じて次の5種類だけです。`apply-tags.ts`(手動/Claudeレビュー)・`tag-watermark-year.ts`・`label-tool`は、すべて同じ文字列語彙を使います(学習ラベルの各フィールド`gen`/`color`/`copyrightYear`は、そのままタグ文字列として書き出せる形で保存されています)。
+`extra.tags`に付けるタグは、地点のカメラ世代に応じて、以下の5種類だけです。
 
-`Smallcam`は`Gen4`と対等な独立した世代として扱います(`Gen4`の特徴・派生ではありません)。解像度は`Gen4`と同じ8192pxですが、車体・アンテナ等の見た目が異なる別カテゴリとして画像から判定します。
-
-| #   | 条件                                 | タグ                   | 例                                                             |
-| --- | ------------------------------------ | ---------------------- | -------------------------------------------------------------- |
-| 1   | 常に                                 | カメラ世代(単体)       | `Gen1`, `Gen4`, `Smallcam`, `Shitcam`, `Gen2 / Gen3 / Shitcam` |
-| 2   | Gen4またはSmallcamの地点だけ         | 透かしの著作権年(単体) | `©2023`, `©unclear`                                            |
-| 3   | Gen4の地点だけ(Smallcamを除く)       | 車体色(単体)           | `Blue`, `Black`                                                |
-| 4   | Gen4で著作権年が判明した地点だけ     | 車体色+著作権年        | `Blue 2023`                                                    |
-| 5   | Smallcamで著作権年が判明した地点だけ | `Smallcam`+著作権年    | `Smallcam 2026`                                                |
+| #   | 付与する条件                           | タグの意味          | タグの名称例                                          |
+| --- | -------------------------------------- | ------------------- | ----------------------------------------------------- |
+| 1   | 常に                                   | カメラ世代          | `Gen1`, `Gen2`, `Gen3`, `Gen4`, `Smallcam`, `Shitcam` |
+| 2   | Gen4 or Smallcam                       | 透かしの著作権年    | `©2023`, `©unclear`                                   |
+| 3   | Gen4                                   | 車体色              | `Blue`, `Black`                                       |
+| 4   | Gen4（著作権年が判明した地点だけ）     | 車体色+著作権年     | `Blue 2023`                                           |
+| 5   | Smallcam（著作権年が判明した地点だけ） | `Smallcam`+著作権年 | `Smallcam 2026`                                       |
 
 補足:
 
-- **世代の判別だけで十分な地点(Gen1/Gen2/Gen3/Shitcam/Smallcam)は車体色を判定しない**。Gen1/Gen2/Gen3/Shitcamは画質が不鮮明で車体色の学習精度が低く判定難度が高いため、Smallcamはそもそも車体がほとんど写らないため。いずれも世代タグ1つだけを付ける(Gen4だけが例外的に車体色を持つ)
-- 透かしの著作権年は**全ての世代で常に抽出を試みる**(`tag-watermark-year.ts`のOCRは世代を問わず毎回実行される)。ただし単体タグとして`extra.tags`に書き込むのはGen4/Smallcamの地点のみ。理由は精度: 透かしの位置は世代によって差があり(古い撮影は上空付近に1箇所、新しい撮影は路面付近に複数箇所など)、Gen4/Smallcam以外への対応(クロップ位置の世代別最適化)は今後の改善候補として保留中
-- 透かしの年号が読み取れない(目視でも不鮮明)場合は`©unclear`とし、タグ自体を省略しない
-- 「車体色/Smallcam + 著作権年」の組み合わせタグ(表4・5)は、著作権年が判明している場合のみ付ける。`©unclear`の場合は組み合わせタグを作らず、単体の色/Smallcamタグと`©unclear`タグだけを付ける
+- 最終的にアウトプットされたJSONの利便性を踏まえ、`Smallcam`は`Gen4`と対等な独立した世代として扱います。
+- Gen4およびSmallcam以外の地点では、車体色および著作権を判定しません。これらの世代のパノラマは画質が不鮮明で学習精度が低く判定難度が高いためです。
+- 著作権はOCR（光学文字認識）によって判定しています。曇りの場合など、パノラマから著作権を明瞭に判定できない場合は`©unclear`とします。
 
-## 使い方1: 車の色などを判定してJSONにタグ付けする(半自動)
+## カメラ世代
 
-`tag-watermark-year.ts`は地点の世代タグ(`Gen4`/`Smallcam`)がすでに付いているかどうかで著作権年タグを書き込むか判断するため、**世代タグを先に確定させてから**実行する必要があります。
+カメラ世代は以下の方法によって分類を実行します。
+
+### ResolutionHeight
+
+Googleのストリートビューのメタデータから得られる`ResolutionHeight`(解像度)を用いると、以下のように大まかにカメラ世代を区分できます。
+
+| ResolutionHeight | 区分                    |
+| ---------------- | ----------------------- |
+| `1664`以下       | `Gen1`                  |
+| `8192`           | `Gen4` / `Smallcam`     |
+| `6656`           | `Gen2 / Gen3 / Shitcam` |
+
+### Gen4 or Smallcam の判定
+
+機械学習によって判定を行います。未実装。
+
+### Gen2 or Gen3 or Shitcam の判定
+
+Shitcamは機械学習なしで機械的に区別することができます(参照: `tag-shitcam.ts`)。ただしこれは既知の国・撮影日の組み合わせだけを機械的に拾う手法で、Shitcamの画質やカメラ・パノラマの特徴を本質的に検出するものではありません。そのため、今後新たに新しい国で出現したShitcamなどは一時的に判定を見逃しますが、これはレアケースであり、意図的に許容しています。
+
+残る「Gen2とGen3の区別」は単純なメタデータ比較では達成できないため、画像から学習したモデルで行う方針です。
+
+Gen2 or Gen3は機械学習によって判定を行います。実装中。
+
+## パノラマのレンダリング方式
+
+front/back(透視図)のみを利用します。
+
+- `front`/`back`(基準は真の進行方向とその180°反対、pitch -20°): 車のボンネットが自然な形で写る、確認に使う画像。
+
+Googleメタデータの`ResolutionHeight`が8192ではない画像では、タイル境界を避けるためfrontを-20°、backを-60°ずらす。
+
+## モデル1: Gen4 or Smallcam
+
+（実装の詳細を記述します）
+
+ここでは、カメラ世代だけではなく、車の色まで判定を行います。
+
+## モデル2: Gen2 or Gen3
+
+（実装の詳細を記述します）
+
+## OCR（光学文字認識）: 著作権
 
 ```bash
 npx tsx tag-shitcam.ts input.json step0.json
@@ -91,78 +92,7 @@ npx tsx tag-watermark-year.ts step1.json output.json --only-untagged
 - 同じ切り出し画像に対しTesseractのページ分割モードを変えて2回OCRし、両方が同じ年で一致した場合のみ採用
 - 一致しなかった/年号が全く読めなかった場合は、黙ってスキップせず`©unclear`タグを付けて目視レビューに回す(ただしタグを書き込むのはGen4/Smallcamの地点のみ。上記「タグ付けの方針」参照)
 
-## 使い方2: 世代 / 色の学習データを集める
-
-### モデルごとにデータフォルダを分ける
-
-`label-tool/`はモデル1つにつき1フォルダ(`label-tool/<model-name>/`)を持つ運用です。各フォルダは`items.json`(候補メタデータ)・`labels.json`(ラベル本体)・`images/`に加えて、そのモデル専用の`model.json`を持ちます:
-
-```json
-{
-  "name": "Gen2 vs Gen3",
-  "generations": ["Gen2", "Gen3", "Shitcam"],
-  "colorGens": []
-}
-```
-
-`label-tool/server.ts`は起動時に`<dataDir>/model.json`を読み、ラベリングUIの選択肢(世代ボタン・車体色収集の対象)をそこから動的に切り替えます。HTML/サーバーのコード自体はモデル間で共有し、フォルダを切り替えるだけでモデルごとの見た目になります(`model.json`が無い古いフォルダは全世代フォールバックで動きます)。複数モデルを扱う場合は`label-tool/<model-a>/`, `label-tool/<model-b>/`のように並べて増やしていきます。現在あるモデル:
-
-| フォルダ                    | `generations`               | `colorGens` |
-| --------------------------- | --------------------------- | ----------- |
-| `label-tool/gen2-vs-gen3/`  | `Gen2` / `Gen3` / `Shitcam` | (なし)      |
-| `label-tool/gen4-smallcam/` | `Gen4` / `Smallcam`         | `Gen4`      |
-
-候補プールのJSON(`candidates-*.json`)もモデルのデータフォルダの中に置きます(例: `label-tool/gen2-vs-gen3/candidates-au-rural.json`)。まだどのモデル用か決まっていない/resolutionHeightで絞り込んでいない生の候補プール(`label-tool/candidates.json`)はモデルフォルダの外に置いたままにしています。
-
-### 候補プールの用意
-
-学習データ用のpanoId候補プールは[Vali](https://github.com/geoguessrwaiwai-lab/Vali)側で生成します。このリポジトリでは生成しません。Valiが出力する生のロケーションJSON(`{ lat, lng, heading, extra: { tags }, panoId }`の配列)は、`label-tool/resolve-locations.ts`でpanoIdごとの実メタデータ(`headingDeg`/`date`/`resolutionHeight`/`countryCode`/`isScout`)を補って`candidates.json`形式(`{ panoId, headingDeg, date, lat, lon, sourceFile, resolutionHeight, countryCode, isScout }`)に変換してから`label-tool/`に渡します:
-
-```bash
-npx tsx label-tool/resolve-locations.ts /path/to/vali-output/xx-locations.json label-tool/<model-name>/candidates.json
-```
-
-デフォルトでは`resolutionHeight===6656`(Gen2/Gen3/Shitcamの可能性がある地点)のみに絞り込みます。Gen1/Gen4も含めた全世代を集めたい場合は`--all-resolutions`を付けます。
-
-### ラベリング
-
-```bash
-cd label-tool
-npx tsx capture-for-labeling.ts <model-name>/candidates.json ./<model-name> --append
-npx tsx server.ts ./<model-name>
-# → http://localhost:4173 でラベリング
-```
-
-既知のGen3地域（ウクライナ、韓国、レソト、エスワティニ、ブータン、ボリビア、ウルグアイ）など、世代があらかじめ分かっているバッチを別途追加する場合も、Vali側で該当するロケーションJSONを生成・`resolve-locations.ts`で変換した上で`--append --preset-gen=Gen3`を付けて取り込みます:
-
-```bash
-cd label-tool
-npx tsx capture-for-labeling.ts /path/to/vali-output/gen3-country-candidates.json ./<model-name> --append --preset-gen=Gen3
-```
-
-Gen3トレッカー(Googleメタデータの`scout`フラグが立った地点)の除外はVali側の候補生成時に行われます。
-既知の世代は`labels.json`へGen3として設定されます。車体色は画像レビュー時に追記できます。
-
-ラベリングツールは各地点について **Front/Back(真の進行方向とその180°反対)**、著作権年を読むための**Watermark**、埋め込みのStreet Viewビューアを表示します。
-
-ラベル構造(「タグ付けの方針」と対応、モデルの`model.json`の`generations`/`colorGens`で選択肢を絞る):
-
-- 世代の選択肢はモデルの`model.json`(`generations`)で決まる。カノニカルな語彙(`Gen1`/`Gen2`/`Gen3`/`Gen4`/`Smallcam`/`Shitcam`)は`shared/generations.ts`に集約。`Smallcam`は`Gen4`と対等な独立した世代で、車体を判定するための特徴フラグではない
-- 車体・ブラーの見え方(`front` / `back` / `both` / `neither`)と車体色は、モデルの`colorGens`に含まれる世代のみで収集する(現状Gen4のみを想定)
-- 対象世代で`neither`の場合は色を記録しない。それ以外は車体色を選択
-- 著作権年はラベリングツールでは収集しない(`tag-watermark-year.ts`のOCRが別途・全世代に対して自動で行う。README上部「使い方1」参照)
-
-キーボード操作: `1-N`(Nはそのモデルの世代数)=世代、`F/B/O/N`=車体・ブラーの見え方(`colorGens`対象の世代のみ)、`Enter`=保存して次へ、`S`=スキップ、`X`=棄却、`←→`=移動。
-
-旧形式のラベルを移行し、棄却済み地点をデータセットから取り除く場合:
-
-```bash
-npx tsx label-tool/migrate-label-format.ts label-tool/<model-name> label-tool/<model-name>/candidates-*.json
-```
-
-進捗は`label-tool/<model-name>/labels.json`に自動保存され、閉じても再開可能です。
-
-## 学習方針
+## 機械学習の方針
 
 front単体・back単体では判断がつきにくいため、**FrontとBackを1組の入力として扱う2分岐モデル**で学習する方針です。
 
@@ -171,14 +101,3 @@ front.jpg ──▶ [CNN backbone] ──▶ 特徴ベクトルA ─┐
                (重み共有)                        ├─▶ 結合 ──▶ MLP ──▶ 世代・色
 back.jpg  ──▶ [CNN backbone] ──▶ 特徴ベクトルB ─┘
 ```
-
-### モデルは1つの多クラス分類器にまとめず、判別が難しい部分だけを個別に学習する
-
-`resolutionHeight`だけで既にGen1・Gen4/Smallcam・6656(Gen2/Gen3/Shitcam)の3層に機械的に分離できています(上記表参照)。この分離が既に解けている問題を、Gen1〜Shitcamを一括で扱う1つの多クラスモデルに再学習させるのは、学習信号の希釈(Gen2/Gen3のような画像的に難しいクラスの信号が、resolutionHeightだけで即答できるGen1/Gen4のような簡単なクラスに埋もれる)とデータの無駄遣いにしかなりません。そのため、判別が難しいバケットごとに専用のモデルを立てる方針です:
-
-- **Gen2 vs Gen3**(現在進行中): `resolutionHeight===6656`の地点専用の2値分類モデル。Shitcamは対象に含めない — `tag-shitcam.ts`で拾いきれない未知のShitcamがGen2/Gen3の学習データに紛れ込む可能性は許容する(意図的なfalse negative、`tag-shitcam.ts`と同じ設計思想)
-- Smallcam vs Gen4(車体色学習と合わせて、将来的に着手予定)
-
-それぞれのモデルは`label-tool/<model-name>/`という専用のデータフォルダ・`model.json`・(将来的には)`models/<model-name>.onnx`という専用の出力を持ちます。
-
-学習済みモデルは`models/`にONNX形式で出力し、Claude/Codexなど特定のAIツールに依存せず、Node.js側から`onnxruntime-node`経由で直接呼び出せるようにします(推論にAPI課金・ネットワーク通信は不要)。

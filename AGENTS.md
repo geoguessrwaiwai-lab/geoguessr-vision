@@ -1,0 +1,125 @@
+# AGENTS.md
+
+このリポジトリで作業するAIエージェント向けの技術情報です。ユーザー向けの説明は[README.md](README.md)を参照してください。
+
+## セットアップ・コマンド
+
+```bash
+npm install
+```
+
+全スクリプトはTypeScriptで書かれており、[tsx](https://github.com/privatenumber/tsx)でビルドなしに直接実行します(`npx tsx foo.ts`、`node foo.ts`ではない点に注意)。型エラーの確認は`npm run typecheck`で行えます。編集後は必ず実行してください。
+
+GoogleのAPIキーは一切不要で、ノーコストで実行できます。
+
+## 構成
+
+| ファイル/フォルダ                 | 用途                                                                                                                                                                                                             |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pb-url.ts`                        | Google内部エンドポイント用の擬似protobuf URLエンコーダ(内部モジュール)                                                                                                                                           |
+| `pano-meta.ts`                     | panoIdからパノラマのメタデータ(真の進行方向/roll、解像度、撮影日、国コード等)を取得(内部モジュール)                                                                                                              |
+| `render-pano.ts`                   | パノラマタイルの合成・レンダリング(内部モジュール、詳細は下記)                                                                                                                                                   |
+| `concurrency.ts`                   | 地点を並列処理するための小さなワーカープール(内部モジュール)                                                                                                                                                     |
+| `capture-locations.ts`             | 地点JSON一括処理。各地点のfront/back+透かしクロップをレンダリング + manifest出力                                                                                                                                 |
+| `apply-tags.ts`                    | タグ付け結果を`extra.tags`にマージして保存                                                                                                                                                                       |
+| `tag-watermark-year.ts`            | 透かしの年号をOCRで自動タグ付け(Gen4/Smallcamのみ、読み取れない場合は`©unclear`)                                                                                                                                 |
+| `tag-shitcam.ts`                   | 既知の国・撮影日の組み合わせからShitcamを自動タグ付け(画像判定不要)                                                                                                                                              |
+| `shared/generations.ts`            | カノニカルな世代語彙(`Gen1`/`Gen2`/`Gen3`/`Gen4`/`Smallcam`/`Shitcam`)と`COLOR_GENS`(車体色収集の対象、現状Gen4のみ)の定義                                                                                       |
+| `label-tool/resolve-locations.ts`  | Valiが出力する生のロケーションJSON(`{lat, lng, heading, extra.tags, panoId}`)を、panoIdごとに`getPanoMeta()`で補完して学習用`candidates.json`形式に変換。デフォルトで`resolutionHeight===6656`のみ残す(下記参照) |
+| `label-tool/capture-for-labeling.ts` | 候補ごとにfront/back/watermarkをレンダリングし、ラベリングツールが読む`items.json`を生成(`--preset-gen`で既知世代を仮ラベル可)                                                                                  |
+| `label-tool/server.ts`             | 世代・車体色をラベリングするローカルWebツール本体(下記参照)                                                                                                                                                      |
+| `label-tool/migrate-label-format.ts` | 旧形式ラベルの移行・棄却済み地点のデータセットからの除去                                                                                                                                                       |
+| `label-tool/<model-name>/`         | モデルごとのデータフォルダ(`items.json`/`labels.json`/`images/`/`model.json`)。現在: `gen2-vs-gen3/`, `gen4-smallcam/`                                                                                          |
+| `models/`(gitignore対象)           | 学習済みモデルの出力先                                                                                                                                                                                           |
+
+## レンダリング・世代分類の内部実装
+
+- `render-pano.ts`の`renderLocationBundle()`が1回のタイル取得からfront/back/watermarkを全部切り出す。
+- `ResolutionHeight`による世代区分は`pano-meta.ts`の`classifyResolutionHeight`に共通定義がある。定義外の値は`Unknown`とし、推測では分類しない。
+
+| ResolutionHeight | 区分                                                          |
+| ----------------- | ------------------------------------------------------------- |
+| `1664`以下        | `Gen1`                                                        |
+| `8192`             | `Gen4` / `Smallcam`(同じ解像度で、両者の区別は画像を見て行う) |
+| `6656`             | `Gen2 / Gen3 / Shitcam`(これらは解像度だけでは区別できない)   |
+
+## タグ・ラベルの語彙統一
+
+`apply-tags.ts`(手動/Claudeレビュー)・`tag-watermark-year.ts`・`label-tool`は、すべて同じ文字列語彙を使う。学習ラベルの各フィールド(`gen`/`color`/`copyrightYear`)は、そのままタグ文字列として書き出せる形で保存する設計。詳細なタグ付け方針の表はREADME参照。
+
+## label-tool: モデルごとのデータフォルダ運用
+
+`label-tool/`はモデル1つにつき1フォルダ(`label-tool/<model-name>/`)を持つ運用。各フォルダは`items.json`(候補メタデータ)・`labels.json`(ラベル本体)・`images/`に加えて、専用の`model.json`を持つ:
+
+```json
+{
+  "name": "Gen2 vs Gen3",
+  "generations": ["Gen2", "Gen3", "Shitcam"],
+  "colorGens": []
+}
+```
+
+`label-tool/server.ts`は起動時に`<dataDir>/model.json`を読み、ラベリングUIの選択肢(世代ボタン・車体色収集の対象)をそこから動的に切り替える。HTML/サーバーのコード自体はモデル間で共有し、フォルダを切り替えるだけでモデルごとの見た目になる(`model.json`が無い古いフォルダは全世代フォールバックで動く)。複数モデルを扱う場合は`label-tool/<model-a>/`, `label-tool/<model-b>/`のように並べて増やす。現在あるモデル:
+
+| フォルダ                    | `generations`               | `colorGens` |
+| ---------------------------- | ---------------------------- | ------------ |
+| `label-tool/gen2-vs-gen3/`   | `Gen2` / `Gen3` / `Shitcam`  | (なし)       |
+| `label-tool/gen4-smallcam/`  | `Gen4` / `Smallcam`          | `Gen4`       |
+
+候補プールのJSON(`candidates-*.json`)もモデルのデータフォルダの中に置く(例: `label-tool/gen2-vs-gen3/candidates-au-rural.json`)。まだどのモデル用か決まっていない/resolutionHeightで絞り込んでいない生の候補プール(`label-tool/candidates.json`)はモデルフォルダの外に置く。
+
+### 候補プールの用意からラベリングまでの手順
+
+学習データ用のpanoId候補プールは[Vali](https://github.com/geoguessrwaiwai-lab/Vali)側で生成する(このリポジトリでは生成しない)。Valiが出力する生のロケーションJSON(`{ lat, lng, heading, extra: { tags }, panoId }`の配列)は、`label-tool/resolve-locations.ts`でpanoIdごとの実メタデータ(`headingDeg`/`date`/`resolutionHeight`/`countryCode`/`isScout`)を補って`candidates.json`形式に変換してから`label-tool/`に渡す:
+
+```bash
+npx tsx label-tool/resolve-locations.ts /path/to/vali-output/xx-locations.json label-tool/<model-name>/candidates.json
+```
+
+デフォルトでは`resolutionHeight===6656`(Gen2/Gen3/Shitcamの可能性がある地点)のみに絞り込む。Gen1/Gen4も含めた全世代を集めたい場合は`--all-resolutions`を付ける。
+
+```bash
+cd label-tool
+npx tsx capture-for-labeling.ts <model-name>/candidates.json ./<model-name> --append
+npx tsx server.ts ./<model-name>
+# → http://localhost:4173 でラベリング
+```
+
+既知のGen3地域(ウクライナ、韓国、レソト、エスワティニ、ブータン、ボリビア、ウルグアイ)など、世代があらかじめ分かっているバッチを別途追加する場合は、Vali側で該当するロケーションJSONを生成・`resolve-locations.ts`で変換した上で`--append --preset-gen=Gen3`を付けて取り込む:
+
+```bash
+cd label-tool
+npx tsx capture-for-labeling.ts /path/to/vali-output/gen3-country-candidates.json ./<model-name> --append --preset-gen=Gen3
+```
+
+Gen3トレッカー(Googleメタデータの`scout`フラグが立った地点)の除外はVali側の候補生成時に行う。既知の世代は`labels.json`へGen3として設定される。車体色は画像レビュー時に追記できる。
+
+ラベリングツールは各地点について**Front/Back(真の進行方向とその180°反対)**、著作権年を読むための**Watermark**、埋め込みのStreet Viewビューアを表示する。
+
+ラベル構造(モデルの`model.json`の`generations`/`colorGens`で選択肢を絞る):
+
+- 世代の選択肢はモデルの`model.json`(`generations`)で決まる。カノニカルな語彙は`shared/generations.ts`に集約。`Smallcam`は`Gen4`と対等な独立した世代で、車体を判定するための特徴フラグではない。
+- 車体・ブラーの見え方(`front` / `back` / `both` / `neither`)と車体色は、モデルの`colorGens`に含まれる世代のみで収集する(現状Gen4のみを想定)。
+- 対象世代で`neither`の場合は色を記録しない。それ以外は車体色を選択する。
+- 著作権年はラベリングツールでは収集しない(`tag-watermark-year.ts`のOCRがGen4/Smallcamの地点に対して別途自動で行う)。
+
+キーボード操作: `1-N`(Nはそのモデルの世代数)=世代、`F/B/O/N`=車体・ブラーの見え方(`colorGens`対象の世代のみ)、`Enter`=保存して次へ、`S`=スキップ、`X`=棄却、`←→`=移動。
+
+旧形式のラベルを移行し、棄却済み地点をデータセットから取り除く場合:
+
+```bash
+npx tsx label-tool/migrate-label-format.ts label-tool/<model-name> label-tool/<model-name>/candidates-*.json
+```
+
+進捗は`label-tool/<model-name>/labels.json`に自動保存され、閉じても再開可能。
+
+## モデル分割方針
+
+`resolutionHeight`だけで既にGen1・Gen4/Smallcam・6656(Gen2/Gen3/Shitcam)の3層に機械的に分離できている(上記表参照)。この分離が既に解けている問題を、Gen1〜Shitcamを一括で扱う1つの多クラスモデルに再学習させるのは、学習信号の希釈(Gen2/Gen3のような画像的に難しいクラスの信号が、resolutionHeightだけで即答できるGen1/Gen4のような簡単なクラスに埋もれる)とデータの無駄遣いにしかならない。そのため、判別が難しいバケットごとに専用のモデルを立てる方針:
+
+- **Gen2 vs Gen3**(現在進行中): `resolutionHeight===6656`の地点専用の2値分類モデル。Shitcamは対象に含めない — `tag-shitcam.ts`で拾いきれない未知のShitcamがGen2/Gen3の学習データに紛れ込む可能性は許容する(意図的なfalse negative、`tag-shitcam.ts`と同じ設計思想)。
+- Smallcam vs Gen4(車体色学習と合わせて、将来的に着手予定)。
+
+それぞれのモデルは`label-tool/<model-name>/`という専用のデータフォルダ・`model.json`・(将来的には)`models/<model-name>.onnx`という専用の出力を持つ。
+
+学習済みモデルは`models/`にONNX形式で出力し、Claude/Codexなど特定のAIツールに依存せず、Node.js側から`onnxruntime-node`経由で直接呼び出せるようにする(推論にAPI課金・ネットワーク通信は不要)。
