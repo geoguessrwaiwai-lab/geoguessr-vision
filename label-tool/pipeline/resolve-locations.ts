@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import { getPanoMeta, isKnownShitcam } from '../../pano-meta.ts';
 import { mapConcurrent } from '../../concurrency.ts';
 import { getFlagInt, hasFlag, positionalArgs } from '../../shared/cli-args.ts';
@@ -8,7 +7,7 @@ import { getFlagInt, hasFlag, positionalArgs } from '../../shared/cli-args.ts';
  * 使い方: npx tsx label-tool/resolve-locations.ts <raw-locations.json> <candidates-output.json> [--concurrency=N] [--all-resolutions]
  *
  * Valiが出力する生のロケーションJSON([{ lat, lng, heading, extra: { tags } , panoId }])を、
- * capture-for-labeling.tsが読める candidates.json 形式([{ panoId, headingDeg, date, lat, lon,sourceFile, resolutionHeight, countryCode,
+ * capture-for-labeling.tsが読める candidates.json 形式([{ panoId, headingDeg, date, lat, lon, resolutionHeight, countryCode,
  * isScout }])に変換する。
  *
  * 入力の`heading`/`lat`/`lng`はGeoGuessrの表示用値で、そのままでは使わない —render-pano.tsが要求する真のheadingDeg・撮影日・解像度・国コードは、
@@ -38,7 +37,6 @@ interface Candidate {
   date: string;
   lat: number;
   lon: number;
-  sourceFile: string;
   resolutionHeight: number | null;
   countryCode: string | null;
   isScout: boolean;
@@ -58,7 +56,6 @@ async function main() {
   }
 
   const raw: RawLocation[] = JSON.parse(fs.readFileSync(inputPath, 'utf8'));
-  const sourceFile = path.basename(inputPath);
   const withPanoId = raw.filter((loc): loc is RawLocation & { panoId: string } => !!loc.panoId);
   console.log(`${raw.length} location(s), ${withPanoId.length} with panoId`);
 
@@ -85,7 +82,6 @@ async function main() {
           date: meta.date ?? '',
           lat: meta.lat,
           lon: meta.lon,
-          sourceFile,
           resolutionHeight: meta.resolutionHeight,
           countryCode: meta.countryCode,
           isScout: meta.isScout,

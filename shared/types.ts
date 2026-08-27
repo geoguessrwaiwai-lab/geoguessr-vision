@@ -101,7 +101,6 @@ export interface LabelItem {
   date: string;
   isScout?: boolean;
   countryCode?: string | null;
-  sourceFile: string;
   images: { front: string; back: string; watermark?: string };
 }
 

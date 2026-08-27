@@ -14,7 +14,7 @@ import type { LabelItem, LabelsFile, LabelToolConfig } from '../../shared/types.
  * 既存エントリを新しい画像パスの内容で上書きする(items.json自体の並び・件数は変えない)。
  * レンダリングの幾何(pitch/fov等)を変更した後、既存データセットの画像を作り直す用途。
  *
- * 各候補 { panoId, headingDeg, date, lat, lon, sourceFile } について、
+ * 各候補 { panoId, headingDeg, date, lat, lon } について、
  * outDir/images/<panoId>/ にレンダリングする: front.jpg/back.jpg(想定yaw 0°/180°での透視投影クロップ)。
  * 加えて、outDir/model.jsonの`collectWatermark`がtrueの場合のみwatermark.jpg(著作権年のクロップ)も書き出す — 著作権年はGen4/Smallcamの地点でし
  * か意味を持たないため(README参照)、Gen2/Gen3など不要なモデルでは無駄なレンダリング・ディスク書き込みを避ける。
@@ -37,7 +37,6 @@ interface Candidate {
   date: string;
   lat: number;
   lon: number;
-  sourceFile: string;
   resolutionHeight?: number;
   isScout?: boolean;
   countryCode?: string | null;
@@ -132,7 +131,6 @@ async function main() {
           date: c.date,
           isScout: c.isScout,
           countryCode: c.countryCode,
-          sourceFile: c.sourceFile,
           images: {
             front: `images/${c.panoId}/front.jpg`,
             back: `images/${c.panoId}/back.jpg`,

@@ -345,7 +345,7 @@
           `${labeledCount} / ${items.length} labeled (${percent}%)  (#${idx + 1})`;
         const mapsUrl = `https://www.google.com/maps/@?api=1&map_action=pano&pano=${it.panoId}`;
         document.getElementById('meta').innerHTML =
-          `${it.panoId} | ${it.date ?? '?'} | ${it.sourceFile ?? ''} | ${it.lat?.toFixed(4)},${it.lon?.toFixed(4)} ` +
+          `${it.panoId} | ${it.date ?? '?'} | ${it.lat?.toFixed(4)},${it.lon?.toFixed(4)} ` +
           `<a href="${mapsUrl}" target="_blank" rel="noopener" style="color:var(--accent);margin-left:8px;">Google Mapで開く ↗</a>`;
 
         ensureSkeleton();
