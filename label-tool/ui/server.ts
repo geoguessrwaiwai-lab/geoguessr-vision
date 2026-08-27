@@ -51,24 +51,14 @@ function saveLabels(labels: LabelsFile) {
 }
 
 /**
- * CAR_VIEWSとCOLOR_GENSの値は、最終的な地点JSONのextra.tagsに入るのと同じ文字列(READMEのタグ語彙表参照) — ラベルをタグに変換するときに翻訳では
- * なくフィールドのコピーで済むよう、意図的に同じにしている。
+ * COLOR_GENSの値は、最終的な地点JSONのextra.tagsに入るのと同じ文字列(READMEのタグ語彙表参照) — ラベルをタグに変換するときに翻訳ではなくフィール
+ * ドのコピーで済むよう、意図的に同じにしている。
  * Smallcamはそれ自体が独立した世代(Gen4にぶら下がる機能ではなく兄弟世代)であり、Gen4と同じResolutionHeightを共有しつつ見た目は明確に異なり、
  * 車体色を一切示さない。
  */
-const CAR_VIEWS = new Set(['front', 'back', 'both', 'neither']);
-
 function validateLabel(entry: any): string | null {
   if (typeof entry.panoId !== 'string' || entry.panoId.length === 0) return 'panoId is required';
   if (!GENS.has(entry.gen)) return 'invalid generation';
-
-  if (!COLOR_GENS.has(entry.gen)) return null;
-
-  if (!CAR_VIEWS.has(entry.carView)) return 'invalid car view';
-  if (entry.carView !== 'neither' && !entry.color)
-    return 'color is required when the car is visible';
-  if (entry.carView === 'neither' && entry.color != null)
-    return 'color must be null when carView is neither';
   return null;
 }
 
@@ -80,9 +70,7 @@ function normalizeLabel(entry: any): Omit<LabelEntry, 'at'> {
     notes: entry.notes ?? '',
   };
   if (COLOR_GENS.has(entry.gen)) {
-    normalized.carView = entry.carView;
     normalized.color = entry.color ?? null;
-    normalized.colorCustom = entry.color == null ? '' : (entry.colorCustom ?? '');
   }
   return normalized;
 }

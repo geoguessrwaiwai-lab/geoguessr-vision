@@ -223,7 +223,7 @@ const LOW_RES_FRONT_YAW_OFFSET = -20;
 const LOW_RES_BACK_YAW_OFFSET = -60;
 
 function isLowResolutionPanorama(resolutionHeight: number): boolean {
-  return classifyResolutionHeight(resolutionHeight) !== RESOLUTION_CLASS.GEN4;
+  return classifyResolutionHeight(resolutionHeight) !== RESOLUTION_CLASS.GEN4_SMALLCAM;
 }
 
 async function resolveResolutionHeight(

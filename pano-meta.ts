@@ -16,7 +16,7 @@ export const RESOLUTION_HEIGHT = Object.freeze({
 export const RESOLUTION_CLASS = Object.freeze({
   GEN1: 'Gen1',
   GEN2_GEN3_SHITCAM: 'Gen2 / Gen3 / Shitcam',
-  GEN4: 'Gen4',
+  GEN4_SMALLCAM: 'Gen4 / Smallcam',
   UNKNOWN: 'Unknown',
 });
 
@@ -28,7 +28,7 @@ export function classifyResolutionHeight(resolutionHeight: number | null | undef
   if (!Number.isFinite(resolutionHeight)) return RESOLUTION_CLASS.UNKNOWN;
   const height = resolutionHeight as number;
   if (height <= RESOLUTION_HEIGHT.GEN1_MAX) return RESOLUTION_CLASS.GEN1;
-  if (height === RESOLUTION_HEIGHT.GEN4) return RESOLUTION_CLASS.GEN4;
+  if (height === RESOLUTION_HEIGHT.GEN4) return RESOLUTION_CLASS.GEN4_SMALLCAM;
   if (height === RESOLUTION_HEIGHT.GEN2_GEN3_SHITCAM) {
     return RESOLUTION_CLASS.GEN2_GEN3_SHITCAM;
   }

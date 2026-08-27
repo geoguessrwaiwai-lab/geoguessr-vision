@@ -110,15 +110,8 @@ export interface LabelEntry {
   gen: Generation;
   confidence?: string;
   notes?: string;
-  /**
-   * capture-for-labeling.tsの--preset-genが直接書き込むプリセットラベルには存在しない(server.tsのvalidateLabel/normalizeLabelを経由する通常のラ
-   * ベル付けでのみ必須)ため、型としては省略可能とする。
-   */
-  copyrightYear?: number | 'unclear';
   /** COLOR_GENS(現状はGen4のみ)の場合だけ存在するフィールド群。 */
-  carView?: 'front' | 'back' | 'both' | 'neither';
   color?: string | null;
-  colorCustom?: string;
   at?: string;
 }
 

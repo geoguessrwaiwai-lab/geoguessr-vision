@@ -50,7 +50,7 @@ GoogleのAPIキーは一切不要で、ノーコストで実行できます。
 
 ## タグ・ラベルの語彙統一
 
-`apply-tags.ts`(手動/Claudeレビュー)・`tag-watermark-year.ts`・`label-tool`は、すべて同じ文字列語彙を使う。学習ラベルの各フィールド(`gen`/`color`/`copyrightYear`)は、そのままタグ文字列として書き出せる形で保存する設計。詳細なタグ付け方針の表はREADME参照。
+`apply-tags.ts`(手動/Claudeレビュー)・`tag-watermark-year.ts`・`label-tool`は、すべて同じ文字列語彙を使う。学習ラベルの各フィールド(`gen`/`color`)は、そのままタグ文字列として書き出せる形で保存する設計。詳細なタグ付け方針の表はREADME参照。
 
 ## label-tool: モデルごとのデータフォルダ運用
 
@@ -105,11 +105,10 @@ Gen3トレッカー(Googleメタデータの`scout`フラグが立った地点)�
 ラベル構造(モデルの`model.json`の`generations`/`colorGens`で選択肢を絞る):
 
 - 世代の選択肢はモデルの`model.json`(`generations`)で決まる。カノニカルな語彙は`shared/generations.ts`に集約。`Smallcam`は`Gen4`と対等な独立した世代で、車体を判定するための特徴フラグではない。
-- 車体・ブラーの見え方(`front` / `back` / `both` / `neither`)と車体色は、モデルの`colorGens`に含まれる世代のみで収集する(現状Gen4のみを想定)。
-- 対象世代で`neither`の場合は色を記録しない。それ以外は車体色を選択する。
+- 車体色は、モデルの`colorGens`に含まれる世代のみで収集する(現状Gen4のみを想定)。任意項目で、選ばなくてもラベルは完了扱いになる(車体がfront/backどちらにも写っていない地点もあるため)。
 - 著作権年はラベリングツールでは収集しない(`tag-watermark-year.ts`のOCRがGen4/Smallcamの地点に対して別途自動で行う)。
 
-キーボード操作: `1-N`(Nはそのモデルの世代数)=世代、`F/B/O/N`=車体・ブラーの見え方(`colorGens`対象の世代のみ)、`Enter`=保存して次へ、`S`=スキップ、`X`=棄却、`←→`=移動。
+キーボード操作: `1-N`(Nはそのモデルの世代数)=世代、`Enter`=保存して次へ、`S`=スキップ、`X`=棄却、`←→`=移動。
 
 棄却済み地点をデータセットから取り除く場合:
 
