@@ -29,6 +29,7 @@ GoogleのAPIキーは一切不要で、ノーコストで実行できます。
 | `tag-gen2-gen3-by-model.ts`         | `training/gen2-vs-gen3/`で学習した`models/gen2-vs-gen3.onnx`を使い、境界年(2010-2012)など画像ベースの判定が必要な地点をタグ付け(`onnxruntime-node`経由、推論にAPI課金・ネットワーク通信は不要)                     |
 | `training/gen2-vs-gen3/`            | Gen2 vs Gen3モデルの学習コード一式(Python/PyTorch)。詳細は下記「モデル2: Gen2 or Gen3」参照                                                                                                                      |
 | `shared/generations.ts`            | カノニカルな世代語彙(`Gen1`/`Gen2`/`Gen3`/`Gen4`/`Smallcam`/`Shitcam`)と`COLOR_GENS`(車体色収集の対象、現状Gen4のみ)の定義                                                                                       |
+| `shared/camera-gens-by-country.ts` | [geohints.com/meta/cameraGens](https://geohints.com/meta/cameraGens)の「By Country」を基にした、国コード(ISO 3166-1 alpha-2)ごとに存在するカメラ種別の参考データ(Trekkerは対象外)                              |
 | `label-tool/pipeline/resolve-locations.ts`  | Valiが出力する生のロケーションJSON(`{lat, lng, heading, extra.tags, panoId}`)を、panoIdごとに`getPanoMeta()`で補完して学習用`candidates.json`形式に変換。デフォルトで`resolutionHeight===6656`のみ残す(下記参照) |
 | `label-tool/pipeline/capture-for-labeling.ts` | 候補ごとにfront/back/watermarkをレンダリングし、ラベリングツールが読む`items.json`を生成(`--preset-gen`で既知世代を仮ラベル可)                                                                                  |
 | `label-tool/ui/server.ts`             | 世代・車体色をラベリングするローカルWebツール本体(下記参照)                                                                                                                                                      |
