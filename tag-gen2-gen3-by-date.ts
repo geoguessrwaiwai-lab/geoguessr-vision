@@ -4,6 +4,7 @@ import { mapConcurrent } from './concurrency.ts';
 import { positionalArgs, hasFlag, getFlagInt } from './shared/cli-args.ts';
 import { getPanoId, ensureExtraTags, addTagIfNew } from './shared/location-utils.ts';
 import { isGeneration } from './shared/generations.ts';
+import { CAMERA_GENS_BY_COUNTRY } from './shared/camera-gens-by-country.ts';
 import type { CustomCoordinatesFile } from './shared/types.ts';
 
 /**
@@ -19,7 +20,12 @@ import type { CustomCoordinatesFile } from './shared/types.ts';
  * このタグ付けはlabel-tool/gen2-vs-gen3のモデル学習データセットには影響しない —あちらは撮影年に関わらず全期間のラベルをそのまま学習に使い続け
  * る(このスクリプトは推論対象の地点を機械的に振り分けるだけ)。
  *
- * tag-shitcam.tsと同じ理由で、この表がカバーしない地点(2010-2012年)は意図的に未タグのまま残す — false negativeであって、バグではない。
+ * 境界年(2010-2012)であっても、`shared/camera-gens-by-country.ts`のカメラ世代の国別存在データを見て、
+ * その国にGen2とGen3のどちらか一方しか存在しない場合(例: Isle of Manは`Gen2`のみ、Cambodiaは`Gen3`のみ)は、
+ * 撮影年度によらず機械的に決定できる。この判定は日付カットオフより後に行い、それでも決まらない地点だけを画像ベースの
+ * モデル/レビューに残す。
+ *
+ * tag-shitcam.tsと同じ理由で、上記いずれの方法でも決まらない地点は意図的に未タグのまま残す — false negativeであって、バグではない。
  * 既にGen2/Gen3/Shitcamのいずれかのタグを持つ地点は上書きしない。
  */
 
@@ -77,6 +83,15 @@ async function main() {
       let gen: 'Gen2' | 'Gen3' | null = null;
       if (year <= GEN2_MAX_YEAR) gen = 'Gen2';
       else if (year >= GEN3_MIN_YEAR) gen = 'Gen3';
+      if (!gen) {
+        const possibleGens = meta.countryCode
+          ? (CAMERA_GENS_BY_COUNTRY.get(meta.countryCode) ?? [])
+          : [];
+        const hasGen2 = possibleGens.includes('Gen2');
+        const hasGen3 = possibleGens.includes('Gen3');
+        if (hasGen2 && !hasGen3) gen = 'Gen2';
+        else if (hasGen3 && !hasGen2) gen = 'Gen3';
+      }
       if (!gen) {
         console.log(
           `[${index}] ${panoId} (${meta.countryCode} ${meta.date}) in ambiguous range, leaving for image-based review`,
