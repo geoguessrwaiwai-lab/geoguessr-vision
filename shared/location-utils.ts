@@ -1,11 +1,12 @@
-// Location(customCoordinatesの1要素)に対する共通処理。
-//
-// 「panoIdをトップレベル/extra配下のどちらから拾うか」「タグの大文字小文字を無視した
-// 重複排除」「extra/extra.tagsの初期化」は、capture-locations.ts / apply-tags.ts /
-// tag-watermark-year.ts / tag-shitcam.ts の4ファイルでほぼ同じ
-// コードがコピペされていた。ここに集約する。
+/**
+ * Location(customCoordinatesの1要素)に対する共通処理。
+ *
+ * 「panoIdをトップレベル/extra配下のどちらから拾うか」「タグの大文字小文字を無視した重複排除」「extra/extra.tagsの初期化」は、
+ * capture-locations.ts / apply-tags.ts /tag-watermark-year.ts / tag-shitcam.ts の4ファイルでほぼ同じコードがコピペされていた。
+ * ここに集約する。
+ */
 
-import type { Location } from "./types.ts";
+import type { Location } from './types.ts';
 
 /** `location.panoId` が無ければ `location.extra.panoId` にフォールバックする。 */
 export function getPanoId(location: Location): string | undefined {

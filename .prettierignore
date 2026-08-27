@@ -1,0 +1,8 @@
+node_modules/
+label-tool/*/items.json
+label-tool/*/labels.json
+label-tool/*/migration-report.json
+label-tool/*/images/
+training/*/splits.json
+models/
+*.traineddata

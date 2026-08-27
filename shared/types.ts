@@ -1,11 +1,12 @@
-// リポジトリ全体で使い回すデータ形状をまとめた型定義。
-//
-// 元の.mjs実装では、同じ形のオブジェクト(GeoGuessrのcustomCoordinates要素や
-// パノラマメタデータなど)を各ファイルがそれぞれ暗黙の前提として扱っており、
-// 形が一致しているかはレビュー時に目視で確認するしかなかった。ここに集約することで
-// 「この関数はどんな形のデータを受け取り、何を返すのか」が型として保証される。
+/**
+ * リポジトリ全体で使い回すデータ形状をまとめた型定義。
+ *
+ * 元の.mjs実装では、同じ形のオブジェクト(GeoGuessrのcustomCoordinates要素やパノラマメタデータなど)を各ファイルがそれぞれ暗黙の前提として扱って
+ * おり、形が一致しているかはレビュー時に目視で確認するしかなかった。
+ * ここに集約することで「この関数はどんな形のデータを受け取り、何を返すのか」が型として保証される。
+ */
 
-import type { Generation } from "./generations.ts";
+import type { Generation } from './generations.ts';
 
 /** GeoGuessrのエクスポートJSONにおける、地点1件分の `extra` フィールド。 */
 export interface LocationExtra {
@@ -110,12 +111,13 @@ export interface LabelEntry {
   gen: Generation;
   confidence?: string;
   notes?: string;
-  // capture-for-labeling.tsの--preset-genが直接書き込むプリセットラベルには存在しない
-  // (server.tsのvalidateLabel/normalizeLabelを経由する通常のラベル付けでのみ必須)ため、
-  // 型としては省略可能とする。
-  copyrightYear?: number | "unclear";
+  /**
+   * capture-for-labeling.tsの--preset-genが直接書き込むプリセットラベルには存在しない(server.tsのvalidateLabel/normalizeLabelを経由する通常のラ
+   * ベル付けでのみ必須)ため、型としては省略可能とする。
+   */
+  copyrightYear?: number | 'unclear';
   /** COLOR_GENS(現状はGen4のみ)の場合だけ存在するフィールド群。 */
-  carView?: "front" | "back" | "both" | "neither";
+  carView?: 'front' | 'back' | 'both' | 'neither';
   color?: string | null;
   colorCustom?: string;
   at?: string;
@@ -135,7 +137,4 @@ export interface RejectedLabel {
 }
 
 /** labels.json はpanoIdをキーに、通常ラベルかスキップ/除外のいずれかを値に持つ。 */
-export type LabelsFile = Record<
-  string,
-  LabelEntry | SkippedLabel | RejectedLabel
->;
+export type LabelsFile = Record<string, LabelEntry | SkippedLabel | RejectedLabel>;

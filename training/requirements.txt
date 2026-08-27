@@ -4,3 +4,4 @@ onnx
 onnxruntime
 scikit-learn
 pillow
+ruff
