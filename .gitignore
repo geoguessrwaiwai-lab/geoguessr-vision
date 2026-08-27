@@ -9,11 +9,9 @@ label-tool/*/images/
 label-tool/*/items.json
 label-tool/*/labels.json
 label-tool/*/migration-report.json
-models/
 .DS_Store
 npm-debug.log*
 *.traineddata
 __pycache__/
-training/*/checkpoint.pt
 training/*/splits.json
 
