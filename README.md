@@ -84,7 +84,7 @@ Gen2 ve Gen3を判定する機械学習モデルの詳細については、後�
 
 ## モデル2: Gen2 vs Gen3 (`models/gen2-vs-gen3.onnx`)
 
-事前に私が目視で行ったでのラベリング結果`label-tool/gen2-vs-gen3/labels.json`を用いて、`training/gen2-vs-gen3/`にてモデルを生成しています。
+事前に私が目視で行ったラベリング結果`label-tool/gen2-vs-gen3/labels.json`を用いて、`training/gen2-vs-gen3`にてモデルを生成しています。
 
 1941件のデータを、年代やGen2/Gen3の比率が偏らないように
 
@@ -96,7 +96,7 @@ Gen2 ve Gen3を判定する機械学習モデルの詳細については、後�
 
 そして生成したモデルを最終評価用(test)291件の地点で最終テストしたところ、間違いは2件だけで、Gen2/Gen3双方を考慮した評価指標でも99.31%相当の非常に高い性能となっています。
 
-`ResolutionHeight: 6656` の地点が含まれたJSON `input.json` が手元にある場合、以下のように仕分けを行います。
+`ResolutionHeight: 6656` の地点を含むJSON `input.json` が手元にある場合、以下のように仕分けを行います。
 
 ```bash
 # まず機械的にShitcamのタグ付けをする
@@ -111,6 +111,8 @@ npx tsx tag-gen2-gen3-by-date.ts step0.json step0b.json --only-untagged
 npx tsx tag-gen2-gen3-by-model.ts step0b.json step1.json --only-untagged
 # `step0b.json` → `step1.json`
 ```
+
+いずれのコマンドでも、入力JSONに含まれる`Gen1`,`Gen4`,`Smallcam`の地点はタグ付けが行われないだけで、そのまま出力JSONに含まれます。
 
 ## OCR（光学文字認識）: 著作権
 
