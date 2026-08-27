@@ -106,7 +106,7 @@ npx tsx tag-shitcam.ts input.json step0.json --only-untagged
 # `input.json` → `step0.json`
 
 # 残された「Gen2 or Gen3」の地点のうち、機械的に「Gen2 or Gen3」を判定できる地点のタグ付けをする
-npx tsx tag-gen2-gen3-by-date.ts step0.json step0b.json --only-untagged
+npx tsx tag-gen2-gen3-by-rule.ts step0.json step0b.json --only-untagged
 # `step0.json` → `step0b.json`
 
 # 最後に残された「Gen2 or Gen3」の地点は機械学習モデルを用いて「Gen2 vs Gen3」を判定してタグ付けをする
@@ -120,7 +120,7 @@ npx tsx tag-gen2-gen3-by-model.ts step0b.json step1.json --only-untagged
 
 ```bash
 npx tsx tag-shitcam.ts input.json step0a.json
-npx tsx tag-gen2-gen3-by-date.ts step0a.json step0.json --only-untagged
+npx tsx tag-gen2-gen3-by-rule.ts step0a.json step0.json --only-untagged
 npx tsx capture-locations.ts step0.json ./renders --only-untagged
 # → renders/*-front.jpg, *-back.jpg, *-watermark.jpg をClaude Codeなどに読ませ、
 #   上記「タグ付けの方針」に沿って世代・車体色のtags.jsonを作らせる

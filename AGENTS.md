@@ -25,7 +25,7 @@ GoogleのAPIキーは一切不要で、ノーコストで実行できます。
 | `tag-watermark-year.ts`                       | 透かしの年号をOCRで自動タグ付け(Gen4/Smallcamのみ、読み取れない場合は`©unclear`)                                                                                                                                 |
 | `tag-shitcam.ts`                              | 既知の国・撮影日の組み合わせからShitcamを自動タグ付け(画像判定不要)                                                                                                                                              |
 | `tag-month.ts`                                | Googleメタデータの撮影日から撮影月(`January`〜`December`)を自動タグ付け(全世代対象、画像判定不要)                                                                                                                |
-| `tag-gen2-gen3-by-date.ts`                    | 撮影年だけでGen2/Gen3が機械的に決まる範囲(2009年以前/2013年以降)を自動タグ付け。境界年(2010-2012)は未タグのまま残す                                                                                              |
+| `tag-gen2-gen3-by-rule.ts`                    | 撮影年(2009年以前/2013年以降)または国別カメラ世代データ(`shared/camera-gens-by-country.ts`、Gen2/Gen3どちらか一方しか存在しない国)から機械的に決まる地点を自動タグ付け。それでも決まらない地点は未タグのまま残す |
 | `tag-gen2-gen3-by-model.ts`                   | `training/gen2-vs-gen3/`で学習した`models/gen2-vs-gen3.onnx`を使い、境界年(2010-2012)など画像ベースの判定が必要な地点をタグ付け(`onnxruntime-node`経由、推論にAPI課金・ネットワーク通信は不要)                   |
 | `training/gen2-vs-gen3/`                      | Gen2 vs Gen3モデルの学習コード一式(Python/PyTorch)。詳細は下記「モデル2: Gen2 or Gen3」参照                                                                                                                      |
 | `shared/generations.ts`                       | カノニカルな世代語彙(`Gen1`/`Gen2`/`Gen3`/`Gen4`/`Smallcam`/`Shitcam`)と`COLOR_GENS`(車体色収集の対象、現状Gen4のみ)の定義                                                                                       |
@@ -145,6 +145,6 @@ npx tsx label-tool/pipeline/migrate-label-format.ts label-tool/<model-name> labe
 
 ```bash
 # 学習(必要なら): cd training/gen2-vs-gen3 && python3 prepare_manifest.py && python3 train.py && python3 export_onnx.py
-npx tsx tag-gen2-gen3-by-date.ts step0.json step0b.json --only-untagged
+npx tsx tag-gen2-gen3-by-rule.ts step0.json step0b.json --only-untagged
 npx tsx tag-gen2-gen3-by-model.ts step0b.json step1.json --only-untagged
 ```

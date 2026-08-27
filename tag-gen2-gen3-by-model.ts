@@ -14,7 +14,7 @@ import type { CustomCoordinatesFile } from './shared/types.ts';
  * 使い方:  npx tsx tag-gen2-gen3-by-model.ts <input.json> <output.json> [--only-untagged]    [--concurrency=N] [--min-confidence=0.7]
  * [--model=models/gen2-vs-gen3.onnx]
  *
- * tag-gen2-gen3-by-date.tsが機械的に振り分けられない境界年(2010-2012年)の地点を、training/gen2-vs-gen3/で学習したONNXモデルで判定する。
+ * tag-gen2-gen3-by-rule.tsが機械的に振り分けられない境界年(2010-2012年)の地点を、training/gen2-vs-gen3/で学習したONNXモデルで判定する。
  * resolutionHeight===6656(Gen2/Gen3/Shitcamの可能性がある地点)のうち、
  * 既にGen2/Gen3/Shitcamタグを持つ地点や既知のShitcam(tag-shitcam.ts参照)は対象外。
  *

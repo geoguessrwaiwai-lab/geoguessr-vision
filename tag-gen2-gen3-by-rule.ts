@@ -8,7 +8,7 @@ import { CAMERA_GENS_BY_COUNTRY } from './shared/camera-gens-by-country.ts';
 import type { CustomCoordinatesFile } from './shared/types.ts';
 
 /**
- * 使い方: npx tsx tag-gen2-gen3-by-date.ts <input.json> <output.json> [--only-untagged] [--concurrency=N]
+ * 使い方: npx tsx tag-gen2-gen3-by-rule.ts <input.json> <output.json> [--only-untagged] [--concurrency=N]
  *
  * resolutionHeight===6656(Gen2/Gen3/Shitcamの可能性がある地点)のうち、
  * 撮影年だけでGen2/Gen3が機械的に決まる範囲を先にタグ付けする — label-tool/gen2-vs-gen3で集めたラベル(1272件、撮影年ごとの分布)を見ると、
@@ -40,7 +40,7 @@ async function main() {
 
   if (!inputPath || !outputPath) {
     console.error(
-      'Usage: npx tsx tag-gen2-gen3-by-date.ts <input.json> <output.json> [--only-untagged] [--concurrency=N]',
+      'Usage: npx tsx tag-gen2-gen3-by-rule.ts <input.json> <output.json> [--only-untagged] [--concurrency=N]',
     );
     process.exit(1);
   }
