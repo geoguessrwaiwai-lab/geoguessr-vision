@@ -8,9 +8,9 @@
 
 import type { Location } from './types.ts';
 
-/** `location.panoId` が無ければ `location.extra.panoId` にフォールバックする。 */
+/** `location.panoId` が無ければ(nullを含む) `location.extra.panoId` にフォールバックする。 */
 export function getPanoId(location: Location): string | undefined {
-  return location.panoId || location.extra?.panoId;
+  return location.panoId || location.extra?.panoId || undefined;
 }
 
 /** `location.extra` と `location.extra.tags` が無ければ初期化して返す。 */

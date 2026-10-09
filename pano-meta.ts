@@ -5,7 +5,7 @@
 
 import { Enum, toProtobufUrl, fetchGoogleJson } from './pb-url.ts';
 import { isMainModule } from './shared/is-main-module.ts';
-import type { PanoMeta } from './shared/types.ts';
+import type { PanoCapture, PanoMeta } from './shared/types.ts';
 
 export const RESOLUTION_HEIGHT = Object.freeze({
   GEN1_MAX: 1664,
@@ -145,6 +145,29 @@ function buildMetaRequestUrl(panoId: string): string {
 }
 
 /**
+ * `msg[5][0][8]` は「同じ地点にある他の撮影」の一覧で、各要素は `[近傍パノラマ一覧での位置, [年, 月], ...]`。
+ * パノラマIDと画像の種類(公式/サードパーティ)そのものは近傍パノラマ一覧(`msg[5][0][3][0]`)側にあり、
+ * 各要素が `[[imageType, panoId], null, [[,,lat,lon], ..., [headingDeg, ...]]]` という形をしている。
+ */
+function parseOtherCaptures(msg: any): PanoCapture[] {
+  const nearby = msg[5]?.[0]?.[3]?.[0] ?? [];
+  const captures: PanoCapture[] = [];
+  for (const [nearbyIndex, yearMonth] of msg[5]?.[0]?.[8] ?? []) {
+    const entry = nearby[nearbyIndex];
+    if (!entry) continue;
+    captures.push({
+      panoId: entry[0][1],
+      imageType: entry[0][0],
+      date: yearMonth?.slice(0, 2)?.join('-') ?? null,
+      lat: entry[2][0][2],
+      lon: entry[2][0][3],
+      headingDeg: entry[2][2][0],
+    });
+  }
+  return captures;
+}
+
+/**
  * Googleの内部レスポンスは、ドキュメント化されていない「未加工の入れ子配列」形式(protobufをJSON化しただけのワイヤーフォーマット)であり、
  * `msg[5][0][1][2]` のような位置ベースのアクセスにならざるを得ない。
  * 型を完全に付けるのは非現実的なため、この関数の入力は `unknown` として受け取り、内部でのみ位置アクセスの形をコメントで明示する。
@@ -172,6 +195,7 @@ function parsePanoMessage(msg: any): PanoMeta {
      * データセット構築時にタイル取得前に除外できるよう、独立したフィールドとして残している。
      */
     isScout: captureKind === 'scout',
+    otherCaptures: parseOtherCaptures(msg),
   };
 }
 

@@ -20,7 +20,8 @@ export interface LocationExtra {
 
 /** GeoGuessrのcustomCoordinates配列の要素1件分。 */
 export interface Location {
-  panoId?: string;
+  /** エクスポートJSONでは、座標から解決させる地点が明示的に`null`になっている。 */
+  panoId?: string | null;
   resolutionHeight?: number;
   extra?: LocationExtra;
   [key: string]: unknown;
@@ -30,6 +31,31 @@ export interface Location {
 export interface CustomCoordinatesFile {
   customCoordinates: Location[];
   [key: string]: unknown;
+}
+
+/**
+ * Street Viewの「画像の種類」。Googleのメタデータ内で、パノラマIDに必ず添えられている。
+ * 公式のGoogle撮影か、サードパーティ(ユーザー投稿のphoto sphere等)かは、著作権表記ではなくこの値で見分ける
+ * (サードパーティのカバレッジでも著作権表記が`© <年> Google`になることがあるため)。
+ */
+export const IMAGE_TYPE = Object.freeze({
+  /** Googleの公式カバレッジ。パノラマIDは22文字。 */
+  OFFICIAL: 2,
+  /** サードパーティ(ユーザー投稿)のカバレッジ。パノラマIDは`CIABIh...`のような長い形式。 */
+  THIRD_PARTY: 10,
+});
+
+/** 同じ地点にある、別の時期の撮影(Googleマップでいう「タイムマシン」)1件分。 */
+export interface PanoCapture {
+  panoId: string;
+  /** `IMAGE_TYPE`のいずれか。公式/サードパーティの判定に使う。 */
+  imageType: number;
+  /** 撮影日("YYYY-M"形式)。 */
+  date: string | null;
+  lat: number;
+  lon: number;
+  /** 撮影車両が実際に向いていた真の方角。 */
+  headingDeg: number;
 }
 
 /**
@@ -55,6 +81,11 @@ export interface PanoMeta {
   isGoogleOfficial: boolean;
   /** Gen3のトレッカー撮影かどうか。 */
   isScout: boolean;
+  /**
+   * 同じ地点にある、このパノラマ以外の撮影。新しい順ではなくGoogleが返した順のまま。
+   * 座標だけを指定してStreet Viewを開くと、ここに含まれる最新の撮影(サードパーティであっても)が表示される。
+   */
+  otherCaptures: PanoCapture[];
 }
 
 /** capture-locations.ts が manifest.json に書き出す1地点分のレコード。 */
